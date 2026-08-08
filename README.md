@@ -23,7 +23,8 @@ pnpm dev
 ## 검증
 
 ```bash
-pnpm build
+pnpm build        # Vercel용 Next.js 빌드
+pnpm build:sites  # Sites용 Vinext 빌드
 pnpm lint
 pnpm test
 ```
