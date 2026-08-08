@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { createClient } from "../../lib/supabase/client";
 
 const ADMIN_EMAIL = "nugoona2021@naver.com";
@@ -59,6 +60,7 @@ export default function LoginPage() {
         </form>
         {message && <p className="auth-message error" role="alert">{message}</p>}
         <small>승인된 최고관리자 계정만 운영 화면에 접근할 수 있습니다.</small>
+        <Link className="instructor-entry-link" href="/instructor/login">강사 로그인으로 이동 →</Link>
       </section>
     </main>
   );

@@ -32,6 +32,23 @@ test("server-renders the ClassFlow administrator login", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 
+test("server-renders the instructor login", async () => {
+  const response = await render("/instructor/login");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /강사 로그인/);
+  assert.match(html, /아직 강사 계정이 없으신가요/);
+});
+
+test("server-renders the instructor signup", async () => {
+  const response = await render("/instructor/signup");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /강사 회원가입/);
+  assert.match(html, /강사로 가입하기/);
+  assert.match(html, /개인정보 수집/);
+});
+
 test("ships project metadata and a bespoke social card", async () => {
   const [layout, page, packageJson] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
