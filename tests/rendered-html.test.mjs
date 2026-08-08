@@ -26,7 +26,9 @@ test("server-renders the ClassFlow administrator login", async () => {
   const html = await response.text();
   assert.match(html, /클래스플로우/);
   assert.match(html, /운영센터 로그인/);
-  assert.match(html, /로그인 링크 받기/);
+  assert.match(html, /비밀번호/);
+  assert.match(html, />로그인</);
+  assert.doesNotMatch(html, /로그인 링크 받기/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 

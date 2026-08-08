@@ -3,26 +3,31 @@
 import { FormEvent, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 
+const ADMIN_EMAIL = "nugoona2021@naver.com";
+
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSending(true);
+    setSigningIn(true);
     setMessage("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
-      },
+    const { error } = await supabase.auth.signInWithPassword({
+      email: ADMIN_EMAIL,
+      password,
     });
 
-    setSending(false);
-    setMessage(error ? "로그인 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요." : "로그인 링크를 보냈습니다. 이메일을 확인해 주세요.");
+    if (error) {
+      setSigningIn(false);
+      setMessage("이메일 또는 비밀번호가 올바르지 않습니다.");
+      return;
+    }
+
+    window.location.assign("/");
   }
 
   return (
@@ -31,16 +36,29 @@ export default function LoginPage() {
         <span className="brand-mark">C</span>
         <p className="section-kicker">CLASSFLOW ADMIN</p>
         <h1>운영센터 로그인</h1>
-        <p>등록된 관리자 이메일로 안전한 일회용 로그인 링크를 보내드립니다.</p>
+        <p>최고관리자 계정의 비밀번호로 로그인합니다. 별도의 이메일 인증은 필요하지 않습니다.</p>
         <form onSubmit={submit}>
           <label>
             관리자 이메일
-            <input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" required placeholder="admin@example.com" />
+            <input type="email" value={ADMIN_EMAIL} autoComplete="username" readOnly aria-readonly="true" />
           </label>
-          <button className="button primary" disabled={sending}>{sending ? "전송 중…" : "로그인 링크 받기"}</button>
+          <label>
+            비밀번호
+            <input
+              type="password"
+              value={password}
+              onChange={event => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+              minLength={8}
+            />
+          </label>
+          <button className="button primary" disabled={signingIn}>
+            {signingIn ? "로그인 중…" : "로그인"}
+          </button>
         </form>
-        {message && <p className="auth-message" role="status">{message}</p>}
-        <small>승인되지 않은 계정은 운영 화면에 접근할 수 없습니다.</small>
+        {message && <p className="auth-message error" role="alert">{message}</p>}
+        <small>승인된 최고관리자 계정만 운영 화면에 접근할 수 있습니다.</small>
       </section>
     </main>
   );

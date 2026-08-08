@@ -4,7 +4,7 @@
 
 - 운영 인증·DB: Supabase Auth + PostgreSQL + RLS
 - 운영 배포: Vercel Next.js
-- 관리자 인증: PKCE 기반 이메일 매직 링크, 서버 쿠키 세션
+- 관리자 인증: Supabase 이메일·비밀번호 로그인, 서버 쿠키 세션
 - 권한 변경: 서버 API → 보안 정의자 RPC → 내부 역할 검증 → 감사 로그
 - 배포 산출물은 Vercel의 Next.js(`pnpm build`)와 비공개 Sites의 Vinext(`pnpm build:sites`)를 분리한다.
 
