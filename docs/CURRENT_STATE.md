@@ -4,6 +4,11 @@
 
 ## 구현됨
 
+- Supabase 이메일 매직 링크 인증 및 서버 세션 보호
+- 최고관리자 `누구나코딩교육` 부트스트랩 예약과 4단계 역할 기반 권한 제어
+- 회원 승인·거절·역할 변경 API 및 관리자 감사 로그
+- Supabase RLS와 Vercel 운영 환경변수 연결
+
 - 공식 Sites 기반 React/TypeScript 프로젝트 초기화
 - Vercel용 Next.js 빌드와 Sites용 Vinext 빌드 분리
 - Vercel 프로젝트 프레임워크를 Next.js로 설정하고 기존 Vite 출력 폴더 재정의 제거

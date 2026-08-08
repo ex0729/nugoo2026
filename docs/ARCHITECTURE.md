@@ -2,6 +2,11 @@
 
 ## 기술 방향
 
+- 운영 인증·DB: Supabase Auth + PostgreSQL + RLS
+- 운영 배포: Vercel Next.js
+- 관리자 인증: PKCE 기반 이메일 매직 링크, 서버 쿠키 세션
+- 권한 변경: 서버 API → 보안 정의자 RPC → 내부 역할 검증 → 감사 로그
+
 - UI: React 19 + TypeScript + Vinext(App Router 호환)
 - 스타일: Tailwind 기반 빌드 위에 프로젝트 전용 CSS 디자인 토큰
 - 호스팅: Cloudflare Workers 호환 ESM, Sites 배포
@@ -38,4 +43,3 @@
 - 카카오 공급자와 인증 공급자를 인터페이스로 격리한다.
 - 출석·수업일지·정산은 Phase 1 배정 도메인과 분리된 모듈로 추가한다.
 - 수업료는 현재 안내·스냅샷만 담당하고 계산·지급 로직과 분리한다.
-

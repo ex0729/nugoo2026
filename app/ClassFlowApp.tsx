@@ -1,10 +1,11 @@
 "use client";
 /* eslint-disable jsx-a11y/aria-role, jsx-a11y/no-autofocus -- `role` is a domain prop on RoleBadge; conditional autofocus follows a direct user action. */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Screen = "home" | "classes" | "requests" | "schedule" | "instructors" | "approvals" | "notifications";
 type ResponseChoice = "available" | "conditional" | "unavailable" | null;
+type AdminIdentity = { name: string; email: string; role: "service_admin" | "super_admin" };
 
 const navItems: { id: Screen; label: string; icon: string; badge?: number }[] = [
   { id: "home", label: "홈", icon: "⌂" },
@@ -50,7 +51,7 @@ function RoleBadge({ role }: { role: string }) {
   return <span className={`role-badge ${role.includes("보조") ? "assistant" : role.includes("두") ? "both" : "lead"}`}>{role}</span>;
 }
 
-function Topbar({ screen, onInstructor, onCreate }: { screen: Screen; onInstructor: () => void; onCreate: () => void }) {
+function Topbar({ screen, onInstructor, onCreate, admin }: { screen: Screen; onInstructor: () => void; onCreate: () => void; admin: AdminIdentity }) {
   const labels: Record<Screen, string> = { home: "홈", classes: "수업 관리", requests: "배정 요청", schedule: "전체 일정", instructors: "강사 관리", approvals: "회원 승인", notifications: "알림 발송 이력" };
   return (
     <header className="topbar">
@@ -59,18 +60,18 @@ function Topbar({ screen, onInstructor, onCreate }: { screen: Screen; onInstruct
         <button className="icon-btn" aria-label="알림"><span aria-hidden="true">♢</span><i /></button>
         <button className="button secondary instructor-preview" onClick={onInstructor}>강사 화면 보기 <span>→</span></button>
         <button className="button primary" onClick={onCreate}><span aria-hidden="true">＋</span> 수업 등록</button>
-        <button className="profile" aria-label="내 프로필"><span>이지윤</span><b>이</b></button>
+        <a className="profile" aria-label="로그아웃" href="/auth/signout" title={`${admin.email} · 로그아웃`}><span>{admin.name}</span><b>{admin.name[0]}</b></a>
       </div>
     </header>
   );
 }
 
-function Sidebar({ screen, setScreen }: { screen: Screen; setScreen: (s: Screen) => void }) {
+function Sidebar({ screen, setScreen, canManageMembers }: { screen: Screen; setScreen: (s: Screen) => void; canManageMembers: boolean }) {
   return (
     <aside className="sidebar">
       <button className="brand" onClick={() => setScreen("home")}><span className="brand-mark">C</span><span>클래스플로우<small>Instructor Ops</small></span></button>
       <nav aria-label="주 메뉴">
-        {navItems.map(item => <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span className="nav-icon" aria-hidden="true">{item.icon}</span>{item.label}{item.badge ? <em>{item.badge}</em> : null}</button>)}
+        {navItems.filter(item => item.id !== "approvals" || canManageMembers).map(item => <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span className="nav-icon" aria-hidden="true">{item.icon}</span>{item.label}{item.badge ? <em>{item.badge}</em> : null}</button>)}
       </nav>
       <div className="sidebar-help"><span aria-hidden="true">?</span><div><b>도움이 필요하신가요?</b><small>운영 가이드 확인하기</small></div></div>
       <button className="settings"><span aria-hidden="true">⚙</span> 설정</button>
@@ -82,9 +83,9 @@ function MetricCard({ icon, label, value, detail, tone }: { icon: string; label:
   return <article className="metric-card"><div className={`metric-icon ${tone}`} aria-hidden="true">{icon}</div><div><p>{label}</p><strong>{value}</strong><small>{detail}</small></div><button aria-label={`${label} 자세히 보기`}>→</button></article>;
 }
 
-function HomeScreen({ go }: { go: (s: Screen) => void }) {
+function HomeScreen({ go, adminName }: { go: (s: Screen) => void; adminName: string }) {
   return <div className="screen-stack">
-    <section className="welcome-row"><div><h2>좋은 오전이에요, 지윤님 <span aria-hidden="true">☀</span></h2><p>오늘 바로 확인해야 할 배정 업무를 모아봤어요.</p></div><div className="today-chip"><span>오늘</span><b>2026년 8월 8일 토요일</b></div></section>
+    <section className="welcome-row"><div><h2>좋은 오전이에요, {adminName}님 <span aria-hidden="true">☀</span></h2><p>오늘 바로 확인해야 할 배정 업무를 모아봤어요.</p></div><div className="today-chip"><span>오늘</span><b>2026년 8월 8일 토요일</b></div></section>
     <section className="metrics-grid">
       <MetricCard icon="◷" label="응답 대기 수업" value="3건" detail="미응답 강사 8명" tone="blue" />
       <MetricCard icon="!" label="마감 임박" value="2건" detail="24시간 이내 마감" tone="amber" />
@@ -179,9 +180,64 @@ function InstructorsScreen() {
   return <div className="screen-stack"><section className="toolbar"><div className="search"><span>⌕</span><input aria-label="강사 검색" placeholder="강사명, 과목, 지역 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{["전체", "활성", "승인 대기"].map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value} {value === "전체" ? instructors.length : instructors.filter(p => p.state === value).length}</button>)}</div><button className="button secondary">강사 초대</button></section><section className="instructor-grid">{visible.map((p, i) => <article className="panel instructor-card" key={p.name}><div className="instructor-card-head"><span className={`avatar avatar-${i % 4}`}>{p.name[0]}</span><div><h3>{p.name}</h3><p>{p.subjects}</p></div><StatusBadge tone={p.state === "활성" ? "green" : "amber"}>{p.state}</StatusBadge></div><dl><div><dt>활동 지역</dt><dd>{p.region}</dd></div><div><dt>확정 수업</dt><dd>{p.classes}회</dd></div><div><dt>응답률</dt><dd>{p.rate}</dd></div></dl><div className="instructor-card-actions"><button>프로필 보기</button><button>일정 확인</button></div></article>)}{visible.length === 0 && <div className="panel empty-state">검색 조건에 맞는 강사가 없습니다.</div>}</section></div>;
 }
 
-function ApprovalsScreen() {
-  const [approved, setApproved] = useState<string[]>([]);
-  return <div className="screen-stack"><section className="notice-banner"><span>✓</span><div><b>승인 대기 회원이 2명 있어요</b><p>프로필과 소속 정보를 확인한 후 역할을 지정해 주세요.</p></div></section><section className="panel approval-list"><div className="panel-head"><div><span className="section-kicker">MEMBER APPROVAL</span><h3>가입 승인 요청</h3></div></div>{["한도윤", "오수빈"].map((name, i) => <article className="approval-item" key={name}><span className="avatar">{name[0]}</span><div className="approval-info"><h3>{name}</h3><p>010-42{i + 1}8-7{i}24 · {i ? "콘텐츠 제작 · 서울 서부" : "코딩 · 메이커 · 서울 동부"}</p><small>가입 요청 2026. 8. {7 - i}. · 휴대전화 인증 완료</small></div><div className="role-select"><label>부여 역할<select aria-label={`${name} 역할`}><option>소속 강사</option><option>운영 관리자</option></select></label></div>{approved.includes(name) ? <StatusBadge tone="green">승인 완료</StatusBadge> : <div className="approval-actions"><button className="button ghost">거절</button><button className="button primary" onClick={() => setApproved(v => [...v, name])}>승인</button></div>}</article>)}</section></div>;
+type MemberRecord = {
+  user_id: string;
+  email: string;
+  full_name: string;
+  role: "instructor" | "company_member" | "service_admin" | "super_admin";
+  status: "pending" | "active" | "suspended";
+  created_at: string;
+};
+
+function ApprovalsScreen({ currentRole }: { currentRole: AdminIdentity["role"] }) {
+  const [members, setMembers] = useState<MemberRecord[]>([]);
+  const [roles, setRoles] = useState<Record<string, MemberRecord["role"]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/members")
+      .then(async response => {
+        if (!response.ok) throw new Error("members_unavailable");
+        return response.json() as Promise<{ members: MemberRecord[] }>;
+      })
+      .then(data => {
+        setMembers(data.members);
+        setRoles(Object.fromEntries(data.members.map(member => [member.user_id, member.role])));
+      })
+      .catch(() => setError("회원 정보를 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function updateMember(member: MemberRecord, status: MemberRecord["status"]) {
+    setError("");
+    const response = await fetch("/api/admin/members", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: member.user_id, role: roles[member.user_id], status }),
+    });
+
+    if (!response.ok) {
+      setError("권한을 변경하지 못했습니다. 최고관리자 권한을 확인해 주세요.");
+      return;
+    }
+
+    setMembers(current => current.map(item => item.user_id === member.user_id ? { ...item, role: roles[member.user_id], status } : item));
+  }
+
+  const pending = members.filter(member => member.status === "pending");
+  const roleLabel: Record<MemberRecord["role"], string> = { instructor: "소속 강사", company_member: "업체 운영자", service_admin: "운영 관리자", super_admin: "최고관리자" };
+
+  return <div className="screen-stack">
+    <section className="notice-banner"><span>✓</span><div><b>승인 대기 회원이 {pending.length}명 있어요</b><p>실제 Supabase 회원 정보와 서버 권한 정책을 기준으로 처리됩니다.</p></div></section>
+    {error && <section className="notice-banner error-banner"><span>!</span><div><b>처리할 수 없습니다</b><p>{error}</p></div></section>}
+    <section className="panel approval-list"><div className="panel-head"><div><span className="section-kicker">MEMBER APPROVAL</span><h3>가입 승인 요청</h3></div></div>
+      {loading && <div className="empty-state">회원 정보를 불러오는 중입니다.</div>}
+      {!loading && pending.length === 0 && <div className="empty-state">현재 승인 대기 회원이 없습니다.</div>}
+      {pending.map(member => <article className="approval-item" key={member.user_id}><span className="avatar">{member.full_name[0]}</span><div className="approval-info"><h3>{member.full_name}</h3><p>{member.email}</p><small>가입 요청 {new Date(member.created_at).toLocaleDateString("ko-KR")} · 이메일 인증 완료</small></div><div className="role-select"><label>부여 역할<select aria-label={`${member.full_name} 역할`} value={roles[member.user_id] ?? member.role} onChange={event => setRoles(value => ({ ...value, [member.user_id]: event.target.value as MemberRecord["role"] }))}><option value="instructor">소속 강사</option><option value="company_member">업체 운영자</option>{currentRole === "super_admin" && <option value="service_admin">운영 관리자</option>}</select></label></div><div className="approval-actions"><button className="button ghost" onClick={() => updateMember(member, "suspended")}>거절</button><button className="button primary" onClick={() => updateMember(member, "active")}>승인</button></div></article>)}
+    </section>
+    <section className="panel approval-list"><div className="panel-head"><div><span className="section-kicker">ACTIVE MEMBERS</span><h3>현재 계정과 권한</h3></div></div>{members.filter(member => member.status !== "pending").map(member => <article className="approval-item" key={member.user_id}><span className="avatar">{member.full_name[0]}</span><div className="approval-info"><h3>{member.full_name}</h3><p>{member.email}</p></div><StatusBadge tone={member.status === "active" ? "green" : "red"}>{member.status === "active" ? "활성" : "중지"}</StatusBadge><strong className="member-role-label">{roleLabel[member.role]}</strong></article>)}</section>
+  </div>;
 }
 
 function NotificationsScreen() {
@@ -204,19 +260,19 @@ function InstructorMobile({ onBack }: { onBack: () => void }) {
   return <div className="mobile-stage"><div className="mobile-top"><button onClick={onBack}>← 관리자 화면</button><span>클래스플로우</span><small>안전한 응답 링크</small></div><main className="mobile-content"><section className="mobile-intro"><span className="request-label">출강 요청이 도착했어요</span><h1>AI 창의융합<br />체험 수업</h1><p>성수중학교에서 진행하는 수업입니다.<br />아래 내용을 확인하고 응답해 주세요.</p></section><section className="mobile-class-card"><div className="mobile-date"><b>12</b><span>8월 · 수요일</span></div><dl><div><dt>시간</dt><dd>오전 10:00–12:00</dd></div><div><dt>장소</dt><dd>서울 성동구 성수이로 32</dd></div><div><dt>대상</dt><dd>중학교 1–2학년 · 24명</dd></div></dl><button className="detail-toggle" onClick={() => setExpanded(!expanded)}>{expanded ? "상세 정보 접기" : "수업 상세 보기"} <span>{expanded ? "⌃" : "⌄"}</span></button>{expanded && <div className="expanded-detail"><b>수업 내용</b><p>생성형 AI의 원리를 이해하고 팀별 창작 프로젝트를 진행합니다.</p><b>안내사항</b><p>개인 노트북 지참 · 수업 20분 전 도착</p></div>}</section><section className="mobile-role-section"><div className="mobile-section-title"><span>요청받은 역할</span><small>역할별로 응답할 수 있어요</small></div><article className="mobile-role-card selected"><div><RoleBadge role="주강사" /><b>300,000원</b></div><p>수업 전체 진행과 팀별 활동을 총괄합니다.</p><small>교통비 포함 · 원천징수 후 익월 10일 지급</small></article><article className="mobile-role-card"><div><RoleBadge role="보조강사" /><b>1인당 150,000원</b></div><p>실습 환경 세팅과 모둠 활동을 지원합니다.</p></article></section><section className="mobile-response"><div className="mobile-section-title"><span>주강사로 참여 가능하신가요?</span><small><b>오늘 오후 6시</b>까지 응답해 주세요</small></div><div className="response-choices"><button className={choice === "available" ? "selected available" : ""} onClick={() => { setChoice("available"); setCondition(""); }}><span>✓</span><b>가능해요</b><small>일정과 조건 모두 괜찮아요</small></button><button className={choice === "conditional" ? "selected conditional" : ""} onClick={() => setChoice("conditional")}><span>i</span><b>조건부 가능</b><small>조정이 필요한 내용이 있어요</small></button><button className={choice === "unavailable" ? "selected unavailable" : ""} onClick={() => { setChoice("unavailable"); setCondition(""); }}><span>×</span><b>어려워요</b><small>이번 수업은 참여하기 어려워요</small></button></div>{choice === "conditional" && <label className="conditional-input">필요한 조건을 알려주세요<textarea autoFocus required value={condition} onChange={event => setCondition(event.target.value)} placeholder="예: 시작 시간을 30분 늦추면 가능합니다." /><small>{condition.trim() ? "관리자가 후보를 비교할 때 확인합니다." : "조건부 응답을 제출하려면 조건을 입력해 주세요."}</small></label>}<div className="mobile-conflict"><span>!</span><p><b>겹치는 확정 일정은 없어요</b><small>클래스플로우에 등록된 일정 기준</small></p></div></section></main><div className="mobile-bottom"><button className="button primary mobile-primary" disabled={!canSubmit} onClick={() => canSubmit && setSubmitted(true)}>{!choice ? "응답을 선택해 주세요" : choice === "conditional" && !condition.trim() ? "조건을 입력해 주세요" : "이 응답으로 제출하기"}</button><p>마감 전까지 언제든 응답을 변경할 수 있어요.</p></div></div>;
 }
 
-export default function ClassFlowApp() {
+export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIdentity }) {
   const [screen, setScreen] = useState<Screen>("home");
   const [showForm, setShowForm] = useState(false);
   const [instructorMode, setInstructorMode] = useState(false);
   const content = useMemo(() => {
-    if (screen === "home") return <HomeScreen go={setScreen} />;
+    if (screen === "home") return <HomeScreen go={setScreen} adminName={currentAdmin.name} />;
     if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} goRequests={() => setScreen("requests")} />;
     if (screen === "requests") return <RequestsScreen />;
     if (screen === "schedule") return <ScheduleScreen />;
     if (screen === "instructors") return <InstructorsScreen />;
-    if (screen === "approvals") return <ApprovalsScreen />;
+    if (screen === "approvals") return <ApprovalsScreen currentRole={currentAdmin.role} />;
     return <NotificationsScreen />;
-  }, [screen]);
+  }, [currentAdmin.name, currentAdmin.role, screen]);
   if (instructorMode) return <InstructorMobile onBack={() => setInstructorMode(false)} />;
-  return <div className="app-shell"><Sidebar screen={screen} setScreen={setScreen} /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} />}</div>;
+  return <div className="app-shell"><Sidebar screen={screen} setScreen={setScreen} canManageMembers /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} />}</div>;
 }

@@ -2,6 +2,11 @@
 
 ## 2026-08-08
 
+- Supabase Auth 이메일 매직 링크 로그인과 서버 세션 보호 추가
+- `super_admin` 역할, 최초 최고관리자 부트스트랩, 관리자 감사 로그 추가
+- 실제 회원 승인·거절·역할 변경 화면과 API 추가
+- Vercel 운영 환경변수 및 Supabase 인증 콜백 연결
+
 - PRD v0.3을 기준으로 프로젝트 시작
 - Cloudflare Sites 호환 React/TypeScript 기반 구성
 - 장기 맥락 유지를 위한 `docs` 문서 체계 생성
