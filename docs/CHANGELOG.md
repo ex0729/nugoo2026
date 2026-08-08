@@ -21,3 +21,4 @@
 - Vercel이 Vinext Worker 산출물을 인식하지 못해 발생한 루트 404 수정
 - 기본 `build`를 Vercel용 Next.js로 전환하고 `build:sites`를 별도 유지
 - Next.js와 Vinext 양쪽 프로덕션 빌드 및 렌더 검증 통과
+- Vercel 프로젝트의 Vite 프리셋·`dist` 출력 설정을 Next.js 기본값으로 교정
