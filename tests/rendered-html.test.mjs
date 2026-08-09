@@ -49,6 +49,19 @@ test("server-renders the instructor signup", async () => {
   assert.match(html, /개인정보 수집/);
 });
 
+test("routes approved instructors into a protected dashboard", async () => {
+  const [entry, dashboard, signout] = await Promise.all([
+    readFile(new URL("../app/instructor/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/instructor/dashboard/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth/signout/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(entry, /profile\.status === "active"\) redirect\("\/instructor\/dashboard"\)/);
+  assert.match(dashboard, /profile\.status !== "active"\) redirect\("\/instructor"\)/);
+  assert.match(dashboard, /새 수업 요청/);
+  assert.match(dashboard, /다가오는 확정 일정/);
+  assert.match(signout, /requestedNext === "\/instructor\/login"/);
+});
+
 test("ships project metadata and a bespoke social card", async () => {
   const [layout, page, packageJson] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),

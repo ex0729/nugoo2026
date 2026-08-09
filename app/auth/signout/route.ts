@@ -5,5 +5,7 @@ import { createClient } from "../../../lib/supabase/server";
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return NextResponse.redirect(new URL("/login", request.url));
+  const requestedNext = request.nextUrl.searchParams.get("next");
+  const next = requestedNext === "/instructor/login" ? requestedNext : "/login";
+  return NextResponse.redirect(new URL(next, request.url));
 }
