@@ -2,6 +2,7 @@
 /* eslint-disable jsx-a11y/aria-role, jsx-a11y/no-autofocus -- `role` is a domain prop on RoleBadge; conditional autofocus follows a direct user action. */
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type Screen = "home" | "classes" | "requests" | "schedule" | "instructors" | "approvals" | "notifications";
 type ResponseChoice = "available" | "conditional" | "unavailable" | null;
@@ -42,6 +43,14 @@ const instructors = [
   { name: "정유진", subjects: "AI · 데이터", region: "서울 전역", classes: 12, rate: "89%", state: "활성" },
 ];
 
+function recordAdminActivity(action: string, details: Record<string, unknown> = {}) {
+  void fetch("/api/admin/activity", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action, details }),
+  });
+}
+
 function StatusBadge({ children, tone = "gray" }: { children: React.ReactNode; tone?: string }) {
   const icons: Record<string, string> = { green: "✓", amber: "!", red: "!", blue: "◷", gray: "·", mint: "✓" };
   return <span className={`status status-${tone}`}><span aria-hidden="true">{icons[tone] || "·"}</span>{children}</span>;
@@ -60,7 +69,8 @@ function Topbar({ screen, onInstructor, onCreate, admin }: { screen: Screen; onI
         <button className="icon-btn" aria-label="알림"><span aria-hidden="true">♢</span><i /></button>
         <button className="button secondary instructor-preview" onClick={onInstructor}>강사 화면 보기 <span>→</span></button>
         <button className="button primary" onClick={onCreate}><span aria-hidden="true">＋</span> 수업 등록</button>
-        <a className="profile" aria-label="로그아웃" href="/auth/signout" title={`${admin.email} · 로그아웃`}><span>{admin.name}</span><b>{admin.name[0]}</b></a>
+        <div className="profile" title={admin.email}><span>{admin.name}</span><b>{admin.name[0]}</b></div>
+        <Link className="button ghost logout-button" href="/auth/signout">로그아웃</Link>
       </div>
     </header>
   );
@@ -74,7 +84,7 @@ function Sidebar({ screen, setScreen, canManageMembers }: { screen: Screen; setS
         {navItems.filter(item => item.id !== "approvals" || canManageMembers).map(item => <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span className="nav-icon" aria-hidden="true">{item.icon}</span>{item.label}{item.badge ? <em>{item.badge}</em> : null}</button>)}
       </nav>
       <div className="sidebar-help"><span aria-hidden="true">?</span><div><b>도움이 필요하신가요?</b><small>운영 가이드 확인하기</small></div></div>
-      <button className="settings"><span aria-hidden="true">⚙</span> 설정</button>
+      <Link className="settings" href="/settings"><span aria-hidden="true">⚙</span> 설정</Link>
     </aside>
   );
 }
@@ -148,8 +158,13 @@ function RequestsScreen() {
     setAssigned(v => v.includes(name) ? v.filter(n => n !== name) : [...v, name]);
   };
   const sendReminder = () => {
+    recordAdminActivity("assignment_reminded", { class_name: "AI 창의융합 체험 수업", recipients: selected.length });
     setReminderSent(true);
     setSelected([]);
+  };
+  const confirmAssignment = () => {
+    recordAdminActivity("assignment_confirmed", { class_name: "AI 창의융합 체험 수업", instructors: assigned });
+    setConfirmed(true);
   };
   return <div className="request-layout">
     {confirmed && <section className="notice-banner"><span>✓</span><div><b>강사 배정이 완료됐어요</b><p>선택한 주강사 1명과 보조강사 2명에게 확정 알림을 보냈습니다.</p></div></section>}
@@ -159,7 +174,7 @@ function RequestsScreen() {
     <section className="panel response-board"><div className="board-head"><div className="filter-tabs">{["전체", "가능", "조건부", "불가능", "미응답"].map(f => <button className={statusFilter === f ? "active" : ""} onClick={() => setStatusFilter(f)} key={f}>{f}{f === "미응답" ? " 4" : ""}</button>)}</div><div className="board-actions">{selected.length > 0 && <button className="button secondary" onClick={sendReminder}>선택 {selected.length}명 재알림</button>}<div className="search compact"><span>⌕</span><input aria-label="강사 검색" placeholder="강사 검색" value={query} onChange={event => setQuery(event.target.value)} /></div></div></div>
       <div className="candidate-table"><div className="candidate-head"><span><input type="checkbox" aria-label="전체 선택" checked={filtered.length > 0 && filtered.every(c => selected.includes(c.name))} onChange={() => setSelected(filtered.every(c => selected.includes(c.name)) ? [] : filtered.map(c => c.name))} /></span><span>강사</span><span>모집 역할</span><span>응답 상태</span><span>조건·충돌</span><span>배정 후보</span></div>{filtered.map(c => <div className="candidate-row" key={c.name}><span><input type="checkbox" aria-label={`${c.name} 선택`} checked={selected.includes(c.name)} onChange={() => toggleSelected(c.name)} /></span><span className="person"><b>{c.initials}</b><span>{c.name}<small>{c.subject} · {c.region}</small></span></span><span><RoleBadge role={c.role} /></span><span><StatusBadge tone={c.status === "가능" ? "green" : c.status === "조건부" ? "amber" : c.status === "불가능" ? "red" : "gray"}>{c.status}</StatusBadge><small className="cell-note">{c.time}</small></span><span>{c.conflict ? <span className="conflict">! 확정 일정과 30분 겹침</span> : c.condition ? <span className="condition-text">“{c.condition}”</span> : <span className="muted">특이사항 없음</span>}</span><span>{c.status === "가능" || c.status === "조건부" ? <button className={`assign-toggle ${assigned.includes(c.name) ? "selected" : ""}`} onClick={() => toggleAssign(c.name)}>{assigned.includes(c.name) ? "✓ 선택됨" : "후보 선택"}</button> : <span className="muted">—</span>}</span></div>)}{filtered.length === 0 && <div className="empty-state">검색 조건에 맞는 강사가 없습니다.</div>}</div>
     </section>
-    <section className="assignment-bar"><div><span>현재 배정 후보</span><div className="selected-people">{assigned.map((name, i) => <b key={name}>{name}<small>{i === 0 ? "주강사" : "보조강사"}</small></b>)}</div></div><p><span>주강사 <b>1/1</b></span><span>보조강사 <b>{Math.max(0, assigned.length - 1)}/2</b></span></p><button className="button primary" disabled={assigned.length < 3 || confirmed} onClick={() => setConfirmed(true)}>{confirmed ? "✓ 배정 완료" : "최종 배정 확인"}</button></section>
+    <section className="assignment-bar"><div><span>현재 배정 후보</span><div className="selected-people">{assigned.map((name, i) => <b key={name}>{name}<small>{i === 0 ? "주강사" : "보조강사"}</small></b>)}</div></div><p><span>주강사 <b>1/1</b></span><span>보조강사 <b>{Math.max(0, assigned.length - 1)}/2</b></span></p><button className="button primary" disabled={assigned.length < 3 || confirmed} onClick={confirmAssignment}>{confirmed ? "✓ 배정 완료" : "최종 배정 확인"}</button></section>
   </div>;
 }
 
@@ -247,7 +262,11 @@ function NotificationsScreen() {
 function ClassForm({ close }: { close: () => void }) {
   const [assistants, setAssistants] = useState(2);
   const [step, setStep] = useState(1);
-  return <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="form-title"><button className="overlay-bg" onClick={close} aria-label="닫기" /><section className="drawer"><header><div><span className="section-kicker">NEW CLASS</span><h2 id="form-title">새 수업 등록</h2></div><button className="close-button" onClick={close} aria-label="닫기">×</button></header><div className="stepper"><span className="active">1 <b>수업 정보</b></span><i /><span className={step === 2 ? "active" : ""}>2 <b>강사·수업료</b></span><i /><span>3 <b>확인</b></span></div>{step === 1 ? <div className="form-body"><div className="form-section"><h3>기본 정보</h3><div className="form-grid"><label className="wide">수업명<input defaultValue="AI 창의융합 체험 수업" /></label><label>기관명<input defaultValue="성수중학교" /></label><label>담당자<input placeholder="담당자명 · 연락처" /></label><label>수업 날짜<input type="date" defaultValue="2026-08-12" /></label><label>수업 시간<div className="split-input"><input type="time" defaultValue="10:00" /><span>–</span><input type="time" defaultValue="12:00" /></div></label><label className="wide">장소·주소<input defaultValue="서울 성동구 성수이로 32" /></label></div></div><div className="form-section"><h3>수업 상세</h3><div className="form-grid thirds"><label>대상<select defaultValue="중학생"><option>중학생</option><option>초등학생</option><option>고등학생</option></select></label><label>학년<select><option>1~2학년</option></select></label><label>참여 인원<input type="number" defaultValue="24" /></label><label className="wide">수업 내용<textarea defaultValue="생성형 AI의 원리를 이해하고 팀별 창작 프로젝트를 진행합니다." /></label></div></div></div> : <div className="form-body"><div className="form-section"><h3>역할별 필요 인원</h3><div className="role-setting"><article><div><RoleBadge role="주강사" /><p>수업을 총괄하고 진행합니다.</p></div><strong>1명 <small>필수</small></strong></article><article><div><RoleBadge role="보조강사" /><p>실습과 모둠 활동을 지원합니다.</p></div><div className="counter"><button onClick={() => setAssistants(Math.max(0, assistants - 1))}>−</button><b>{assistants}명</b><button onClick={() => setAssistants(Math.min(2, assistants + 1))}>＋</button></div></article></div></div><div className="form-section"><h3>역할별 수업료</h3><div className="fee-fields"><label><span><RoleBadge role="주강사" /> 1인 지급액</span><div><input inputMode="numeric" defaultValue="300,000" /><b>원</b></div></label><label className={assistants === 0 ? "disabled" : ""}><span><RoleBadge role="보조강사" /> 1인당 지급액</span><div><input inputMode="numeric" defaultValue={assistants ? "150,000" : ""} disabled={assistants === 0} /><b>원</b></div></label></div><label className="full-label">수업료 안내사항<textarea defaultValue="교통비 포함, 원천징수 후 수업일 기준 익월 10일 지급" /></label><p className="info-callout"><span>i</span> 입력한 금액은 모집 안내와 최종 배정 알림에 역할별로 표시됩니다.</p></div><div className="form-section"><h3>응답 마감</h3><div className="form-grid"><label>마감 날짜<input type="date" defaultValue="2026-08-08" /></label><label>마감 시간<input type="time" defaultValue="18:00" /></label></div></div></div>}<footer><button className="button ghost" onClick={step === 1 ? close : () => setStep(1)}>{step === 1 ? "취소" : "이전"}</button><button className="button primary" onClick={() => step === 1 ? setStep(2) : close()}>{step === 1 ? "다음: 강사·수업료" : "저장하고 대상 선택"} →</button></footer></section></div>;
+  const saveClass = () => {
+    recordAdminActivity("class_created", { class_name: "AI 창의융합 체험 수업" });
+    close();
+  };
+  return <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="form-title"><button className="overlay-bg" onClick={close} aria-label="닫기" /><section className="drawer"><header><div><span className="section-kicker">NEW CLASS</span><h2 id="form-title">새 수업 등록</h2></div><button className="close-button" onClick={close} aria-label="닫기">×</button></header><div className="stepper"><span className="active">1 <b>수업 정보</b></span><i /><span className={step === 2 ? "active" : ""}>2 <b>강사·수업료</b></span><i /><span>3 <b>확인</b></span></div>{step === 1 ? <div className="form-body"><div className="form-section"><h3>기본 정보</h3><div className="form-grid"><label className="wide">수업명<input defaultValue="AI 창의융합 체험 수업" /></label><label>기관명<input defaultValue="성수중학교" /></label><label>담당자<input placeholder="담당자명 · 연락처" /></label><label>수업 날짜<input type="date" defaultValue="2026-08-12" /></label><label>수업 시간<div className="split-input"><input type="time" defaultValue="10:00" /><span>–</span><input type="time" defaultValue="12:00" /></div></label><label className="wide">장소·주소<input defaultValue="서울 성동구 성수이로 32" /></label></div></div><div className="form-section"><h3>수업 상세</h3><div className="form-grid thirds"><label>대상<select defaultValue="중학생"><option>중학생</option><option>초등학생</option><option>고등학생</option></select></label><label>학년<select><option>1~2학년</option></select></label><label>참여 인원<input type="number" defaultValue="24" /></label><label className="wide">수업 내용<textarea defaultValue="생성형 AI의 원리를 이해하고 팀별 창작 프로젝트를 진행합니다." /></label></div></div></div> : <div className="form-body"><div className="form-section"><h3>역할별 필요 인원</h3><div className="role-setting"><article><div><RoleBadge role="주강사" /><p>수업을 총괄하고 진행합니다.</p></div><strong>1명 <small>필수</small></strong></article><article><div><RoleBadge role="보조강사" /><p>실습과 모둠 활동을 지원합니다.</p></div><div className="counter"><button onClick={() => setAssistants(Math.max(0, assistants - 1))}>−</button><b>{assistants}명</b><button onClick={() => setAssistants(Math.min(2, assistants + 1))}>＋</button></div></article></div></div><div className="form-section"><h3>역할별 수업료</h3><div className="fee-fields"><label><span><RoleBadge role="주강사" /> 1인 지급액</span><div><input inputMode="numeric" defaultValue="300,000" /><b>원</b></div></label><label className={assistants === 0 ? "disabled" : ""}><span><RoleBadge role="보조강사" /> 1인당 지급액</span><div><input inputMode="numeric" defaultValue={assistants ? "150,000" : ""} disabled={assistants === 0} /><b>원</b></div></label></div><label className="full-label">수업료 안내사항<textarea defaultValue="교통비 포함, 원천징수 후 수업일 기준 익월 10일 지급" /></label><p className="info-callout"><span>i</span> 입력한 금액은 모집 안내와 최종 배정 알림에 역할별로 표시됩니다.</p></div><div className="form-section"><h3>응답 마감</h3><div className="form-grid"><label>마감 날짜<input type="date" defaultValue="2026-08-08" /></label><label>마감 시간<input type="time" defaultValue="18:00" /></label></div></div></div>}<footer><button className="button ghost" onClick={step === 1 ? close : () => setStep(1)}>{step === 1 ? "취소" : "이전"}</button><button className="button primary" onClick={() => step === 1 ? setStep(2) : saveClass()}>{step === 1 ? "다음: 강사·수업료" : "저장하고 대상 선택"} →</button></footer></section></div>;
 }
 
 function InstructorMobile({ onBack }: { onBack: () => void }) {

@@ -7,6 +7,8 @@
 - 관리자 인증: Supabase 이메일·비밀번호 로그인, 서버 쿠키 세션
 - 강사 인증: Supabase 이메일·비밀번호 가입·로그인, 이메일 확인, 서버 프로필 기반 역할·승인 상태 검증
 - 권한 변경: 서버 API → 보안 정의자 RPC → 내부 역할 검증 → 감사 로그
+- 관리자 초대: 서버 생성 난수 토큰 → SHA-256 해시 저장 → 이메일 일치·만료·단일 사용 검증 → 운영관리자 프로필 생성
+- 보안 설정: Supabase Auth 비밀번호 변경·세션 범위별 로그아웃 + 본인 세션 조회 RPC
 - 배포 산출물은 Vercel의 Next.js(`pnpm build`)와 비공개 Sites의 Vinext(`pnpm build:sites`)를 분리한다.
 
 - UI: React 19 + TypeScript + Vinext(App Router 호환)

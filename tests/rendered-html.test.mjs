@@ -62,6 +62,23 @@ test("routes approved instructors into a protected dashboard", async () => {
   assert.match(signout, /requestedNext === "\/instructor\/login"/);
 });
 
+test("protects administrator settings and ships its management workflows", async () => {
+  const response = await render("/settings");
+  assert.equal(response.status, 307);
+  assert.equal(response.headers.get("location"), "/login");
+  const [settings, inviteApi, migration] = await Promise.all([
+    readFile(new URL("../app/settings/SettingsClient.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/invitations/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/202608090001_admin_settings.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(settings, /관리자 관리/);
+  assert.match(settings, /보안·활동 기록/);
+  assert.match(settings, /다른 기기에서 로그아웃/);
+  assert.match(inviteApi, /create_admin_invitation/);
+  assert.match(migration, /current_admin_sessions/);
+  assert.match(migration, /only_super_admin_can_manage_admins/);
+});
+
 test("ships project metadata and a bespoke social card", async () => {
   const [layout, page, packageJson] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
