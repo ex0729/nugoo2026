@@ -79,6 +79,20 @@ test("protects administrator settings and ships its management workflows", async
   assert.match(migration, /only_super_admin_can_manage_admins/);
 });
 
+test("persists newly registered classes and uses a reliable settings navigation", async () => {
+  const [app, api, migration] = await Promise.all([
+    readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/classes/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/202608100001_persist_classes.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /<a className="settings" href="\/settings">/);
+  assert.match(app, /fetch\("\/api\/admin\/classes"/);
+  assert.match(app, /onCreated\(result\.class\)/);
+  assert.match(api, /\.from\("classes"\)\.insert/);
+  assert.match(migration, /alter table public\.classes enable row level security/);
+  assert.match(migration, /classes_insert_active_admin/);
+});
+
 test("ships project metadata and a bespoke social card", async () => {
   const [layout, page, packageJson] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),

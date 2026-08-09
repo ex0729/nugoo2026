@@ -1,7 +1,7 @@
 "use client";
-/* eslint-disable jsx-a11y/aria-role, jsx-a11y/no-autofocus -- `role` is a domain prop on RoleBadge; conditional autofocus follows a direct user action. */
+/* eslint-disable jsx-a11y/aria-role, jsx-a11y/no-autofocus, react-hooks/refs -- `role` is a domain prop; form refs preserve values across the two unmounted steps. */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 type Screen = "home" | "classes" | "requests" | "schedule" | "instructors" | "approvals" | "notifications";
@@ -18,12 +18,69 @@ const navItems: { id: Screen; label: string; icon: string; badge?: number }[] = 
   { id: "notifications", label: "알림 이력", icon: "◷" },
 ];
 
-const classes = [
+type ClassListItem = {
+  id: number | string;
+  title: string;
+  institution: string;
+  date: string;
+  time: string;
+  place: string;
+  status: string;
+  tone: string;
+  replies: string;
+  lead: string;
+  assistant: string;
+  deadline: string;
+  urgent: boolean;
+};
+
+type StoredClass = {
+  id: string;
+  title: string;
+  institution: string;
+  class_date: string;
+  start_time: string;
+  end_time: string;
+  address: string;
+  assistant_count: number;
+  response_deadline: string;
+  status: "draft" | "recruiting" | "assignment_needed" | "assigned" | "cancelled";
+};
+
+const demoClasses: ClassListItem[] = [
   { id: 1, title: "AI 창의융합 체험 수업", institution: "성수중학교", date: "8월 12일 (수)", time: "10:00–12:00", place: "서울 성동구", status: "응답 대기", tone: "blue", replies: "8/12", lead: "후보 3명", assistant: "후보 2명", deadline: "오늘 18:00", urgent: true },
   { id: 2, title: "로봇 코딩 진로 캠프", institution: "한빛초등학교", date: "8월 13일 (목)", time: "09:30–12:30", place: "경기 고양시", status: "배정 필요", tone: "amber", replies: "9/10", lead: "후보 4명", assistant: "후보 3명", deadline: "마감 지남", urgent: true },
   { id: 3, title: "메타버스 콘텐츠 제작", institution: "서울미디어고", date: "8월 15일 (토)", time: "13:00–16:00", place: "서울 용산구", status: "배정 완료", tone: "green", replies: "7/7", lead: "김민준", assistant: "이지아", deadline: "완료", urgent: false },
   { id: 4, title: "디지털 리터러시 특강", institution: "마포청소년센터", date: "8월 18일 (화)", time: "14:00–16:00", place: "서울 마포구", status: "요청 전", tone: "gray", replies: "0/8", lead: "미확보", assistant: "미확보", deadline: "8월 14일", urgent: false },
 ];
+
+function storedClassToListItem(item: StoredClass): ClassListItem {
+  const classDate = new Date(`${item.class_date}T00:00:00`);
+  const deadline = new Date(item.response_deadline);
+  const statusMap = {
+    draft: ["요청 전", "gray"],
+    recruiting: ["응답 대기", "blue"],
+    assignment_needed: ["배정 필요", "amber"],
+    assigned: ["배정 완료", "green"],
+    cancelled: ["취소", "red"],
+  } as const;
+  const [status, tone] = statusMap[item.status];
+  return {
+    id: item.id,
+    title: item.title,
+    institution: item.institution,
+    date: new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(classDate),
+    time: `${item.start_time.slice(0, 5)}–${item.end_time.slice(0, 5)}`,
+    place: item.address,
+    status,
+    tone,
+    replies: "0/0",
+    lead: "1명 필요",
+    assistant: item.assistant_count > 0 ? `${item.assistant_count}명 필요` : "모집 없음",
+    deadline: new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(deadline),
+    urgent: false,
+  };
+}
 
 const candidates = [
   { name: "김민준", initials: "김", role: "주강사", status: "가능", time: "오늘 10:24", subject: "AI · 코딩", region: "서울 전역", conflict: false, condition: "" },
@@ -84,7 +141,7 @@ function Sidebar({ screen, setScreen, canManageMembers }: { screen: Screen; setS
         {navItems.filter(item => item.id !== "approvals" || canManageMembers).map(item => <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span className="nav-icon" aria-hidden="true">{item.icon}</span>{item.label}{item.badge ? <em>{item.badge}</em> : null}</button>)}
       </nav>
       <div className="sidebar-help"><span aria-hidden="true">?</span><div><b>도움이 필요하신가요?</b><small>운영 가이드 확인하기</small></div></div>
-      <Link className="settings" href="/settings"><span aria-hidden="true">⚙</span> 설정</Link>
+      <a className="settings" href="/settings"><span aria-hidden="true">⚙</span> 설정</a>
     </aside>
   );
 }
@@ -106,7 +163,7 @@ function HomeScreen({ go, adminName }: { go: (s: Screen) => void; adminName: str
       <div className="panel action-panel">
         <div className="panel-head"><div><span className="section-kicker">ACTION NEEDED</span><h3>지금 확인이 필요한 수업</h3></div><button className="text-button" onClick={() => go("classes")}>전체 보기 →</button></div>
         <div className="action-list">
-          {classes.slice(0, 3).map((item, idx) => <button className="action-item" key={item.id} onClick={() => go(idx === 2 ? "schedule" : "requests")}>
+          {demoClasses.slice(0, 3).map((item, idx) => <button className="action-item" key={item.id} onClick={() => go(idx === 2 ? "schedule" : "requests")}>
             <div className={`date-tile ${idx === 1 ? "urgent" : ""}`}><b>{item.date.split(" ")[1].replace("일", "")}</b><span>{idx === 0 ? "수" : idx === 1 ? "목" : "토"}</span></div>
             <div className="action-main"><div><StatusBadge tone={item.tone}>{item.status}</StatusBadge>{item.urgent && <span className="deadline">{item.deadline}</span>}</div><h4>{item.title}</h4><p>{item.institution} · {item.time} · {item.place}</p></div>
             <div className="candidate-count"><span>주강사 <b>{item.lead}</b></span><span>보조강사 <b>{item.assistant}</b></span></div><span className="chevron">›</span>
@@ -125,17 +182,17 @@ function HomeScreen({ go, adminName }: { go: (s: Screen) => void; adminName: str
   </div>;
 }
 
-function ClassesScreen({ onCreate, goRequests }: { onCreate: () => void; goRequests: () => void }) {
+function ClassesScreen({ onCreate, goRequests, classItems, loading }: { onCreate: () => void; goRequests: () => void; classItems: ClassListItem[]; loading: boolean }) {
   const [filter, setFilter] = useState("전체");
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
-  const visible = classes.filter(c => {
+  const visible = classItems.filter(c => {
     const matchesStatus = filter === "전체" || c.status === filter;
     const matchesQuery = !normalizedQuery || [c.title, c.institution, c.place].some(value => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
     return matchesStatus && matchesQuery;
   });
   return <div className="screen-stack"><section className="toolbar"><div className="search"><span aria-hidden="true">⌕</span><input aria-label="수업 검색" placeholder="기관명 또는 수업명 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{["전체", "응답 대기", "배정 필요", "배정 완료"].map(f => <button className={filter === f ? "active" : ""} onClick={() => setFilter(f)} key={f}>{f}</button>)}</div><button className="button primary" onClick={onCreate}>＋ 새 수업</button></section>
-    <section className="panel class-table-panel"><div className="list-summary"><p>검색 결과 <b>{visible.length}</b></p><div><button className="view-toggle active">목록</button><button className="view-toggle">주간 일정</button></div></div><div className="class-table"><div className="class-table-head"><span>수업 정보</span><span>일정·장소</span><span>모집 현황</span><span>응답 마감</span><span>상태</span><span /></div>{visible.map(item => <div className="class-row" key={item.id}><span><b>{item.title}</b><small>{item.institution}</small></span><span><b>{item.date} · {item.time}</b><small>{item.place}</small></span><span><small>주강사 {item.lead}</small><small>보조강사 {item.assistant}</small></span><span className={item.deadline.includes("지남") ? "text-red" : ""}>{item.deadline}</span><span><StatusBadge tone={item.tone}>{item.status}</StatusBadge></span><span><button className="row-action" onClick={goRequests}>{item.status === "응답 대기" || item.status === "배정 필요" ? "현황 보기" : "상세"}</button></span></div>)}{visible.length === 0 && <div className="empty-state">검색 조건에 맞는 수업이 없습니다.</div>}</div></section>
+    <section className="panel class-table-panel"><div className="list-summary"><p>검색 결과 <b>{visible.length}</b></p><div><button className="view-toggle active">목록</button><button className="view-toggle">주간 일정</button></div></div><div className="class-table"><div className="class-table-head"><span>수업 정보</span><span>일정·장소</span><span>모집 현황</span><span>응답 마감</span><span>상태</span><span /></div>{loading && <div className="empty-state">등록된 수업을 불러오는 중입니다.</div>}{!loading && visible.map(item => <div className="class-row" key={item.id}><span><b>{item.title}</b><small>{item.institution}</small></span><span><b>{item.date} · {item.time}</b><small>{item.place}</small></span><span><small>주강사 {item.lead}</small><small>보조강사 {item.assistant}</small></span><span className={item.deadline.includes("지남") ? "text-red" : ""}>{item.deadline}</span><span><StatusBadge tone={item.tone}>{item.status}</StatusBadge></span><span><button className="row-action" onClick={goRequests}>{item.status === "응답 대기" || item.status === "배정 필요" ? "현황 보기" : "상세"}</button></span></div>)}{!loading && visible.length === 0 && <div className="empty-state">검색 조건에 맞는 수업이 없습니다.</div>}</div></section>
   </div>;
 }
 
@@ -259,14 +316,37 @@ function NotificationsScreen() {
   return <div className="screen-stack"><section className="metrics-grid compact-metrics"><MetricCard icon="↗" label="오늘 발송" value="24건" detail="성공 23 · 실패 1" tone="blue" /><MetricCard icon="✓" label="발송 성공률" value="98.7%" detail="최근 30일 기준" tone="mint" /><MetricCard icon="◷" label="재알림" value="4건" detail="오늘 선택 발송" tone="amber" /></section><section className="panel notification-list"><div className="panel-head"><div><span className="section-kicker">DELIVERY LOG</span><h3>알림 발송 이력</h3></div><div className="filter-tabs"><button className="active">전체</button><button>요청</button><button>재알림</button><button>결과</button></div></div>{["배정 요청", "재알림", "배정 확정", "미선택 안내", "일정 변경"].map((type, i) => <article className="notification-item" key={type}><span className={`notification-type nt-${i}`}>{i === 0 ? "↗" : i === 1 ? "◷" : "✓"}</span><div><b>{type} · {i < 2 ? "AI 창의융합 체험 수업" : "로봇 코딩 진로 캠프"}</b><p>{i === 1 ? "한도윤 외 3명" : "김민준 외 7명"} · 카카오 알림톡</p></div><span>오늘 {10 + i}:2{i}</span><StatusBadge tone={i === 4 ? "red" : "green"}>{i === 4 ? "실패" : "성공"}</StatusBadge>{i === 4 && <button className="row-action">재발송</button>}</article>)}</section></div>;
 }
 
-function ClassForm({ close }: { close: () => void }) {
+function ClassForm({ close, onCreated }: { close: () => void; onCreated: (item: StoredClass) => void }) {
   const [assistants, setAssistants] = useState(2);
   const [step, setStep] = useState(1);
-  const saveClass = () => {
-    recordAdminActivity("class_created", { class_name: "AI 창의융합 체험 수업" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const draft = useRef({
+    title: "AI 창의융합 체험 수업", institution: "성수중학교", contact: "", classDate: "2026-08-12",
+    startTime: "10:00", endTime: "12:00", address: "서울 성동구 성수이로 32", targetGroup: "중학생",
+    grade: "1~2학년", participantCount: 24, description: "생성형 AI의 원리를 이해하고 팀별 창작 프로젝트를 진행합니다.",
+    leadFee: 300000, assistantFee: 150000, feeNotes: "교통비 포함, 원천징수 후 수업일 기준 익월 10일 지급",
+    deadlineDate: "2026-08-11", deadlineTime: "18:00",
+  });
+  const numberValue = (value: string) => Number(value.replace(/[^0-9]/g, ""));
+  const saveClass = async () => {
+    setSaving(true);
+    setError("");
+    const response = await fetch("/api/admin/classes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...draft.current, assistantCount: assistants }),
+    });
+    const result = await response.json().catch(() => null) as { class?: StoredClass } | null;
+    if (!response.ok || !result?.class) {
+      setError("수업을 저장하지 못했습니다. 필수 입력값과 날짜를 확인해 주세요.");
+      setSaving(false);
+      return;
+    }
+    onCreated(result.class);
     close();
   };
-  return <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="form-title"><button className="overlay-bg" onClick={close} aria-label="닫기" /><section className="drawer"><header><div><span className="section-kicker">NEW CLASS</span><h2 id="form-title">새 수업 등록</h2></div><button className="close-button" onClick={close} aria-label="닫기">×</button></header><div className="stepper"><span className="active">1 <b>수업 정보</b></span><i /><span className={step === 2 ? "active" : ""}>2 <b>강사·수업료</b></span><i /><span>3 <b>확인</b></span></div>{step === 1 ? <div className="form-body"><div className="form-section"><h3>기본 정보</h3><div className="form-grid"><label className="wide">수업명<input defaultValue="AI 창의융합 체험 수업" /></label><label>기관명<input defaultValue="성수중학교" /></label><label>담당자<input placeholder="담당자명 · 연락처" /></label><label>수업 날짜<input type="date" defaultValue="2026-08-12" /></label><label>수업 시간<div className="split-input"><input type="time" defaultValue="10:00" /><span>–</span><input type="time" defaultValue="12:00" /></div></label><label className="wide">장소·주소<input defaultValue="서울 성동구 성수이로 32" /></label></div></div><div className="form-section"><h3>수업 상세</h3><div className="form-grid thirds"><label>대상<select defaultValue="중학생"><option>중학생</option><option>초등학생</option><option>고등학생</option></select></label><label>학년<select><option>1~2학년</option></select></label><label>참여 인원<input type="number" defaultValue="24" /></label><label className="wide">수업 내용<textarea defaultValue="생성형 AI의 원리를 이해하고 팀별 창작 프로젝트를 진행합니다." /></label></div></div></div> : <div className="form-body"><div className="form-section"><h3>역할별 필요 인원</h3><div className="role-setting"><article><div><RoleBadge role="주강사" /><p>수업을 총괄하고 진행합니다.</p></div><strong>1명 <small>필수</small></strong></article><article><div><RoleBadge role="보조강사" /><p>실습과 모둠 활동을 지원합니다.</p></div><div className="counter"><button onClick={() => setAssistants(Math.max(0, assistants - 1))}>−</button><b>{assistants}명</b><button onClick={() => setAssistants(Math.min(2, assistants + 1))}>＋</button></div></article></div></div><div className="form-section"><h3>역할별 수업료</h3><div className="fee-fields"><label><span><RoleBadge role="주강사" /> 1인 지급액</span><div><input inputMode="numeric" defaultValue="300,000" /><b>원</b></div></label><label className={assistants === 0 ? "disabled" : ""}><span><RoleBadge role="보조강사" /> 1인당 지급액</span><div><input inputMode="numeric" defaultValue={assistants ? "150,000" : ""} disabled={assistants === 0} /><b>원</b></div></label></div><label className="full-label">수업료 안내사항<textarea defaultValue="교통비 포함, 원천징수 후 수업일 기준 익월 10일 지급" /></label><p className="info-callout"><span>i</span> 입력한 금액은 모집 안내와 최종 배정 알림에 역할별로 표시됩니다.</p></div><div className="form-section"><h3>응답 마감</h3><div className="form-grid"><label>마감 날짜<input type="date" defaultValue="2026-08-08" /></label><label>마감 시간<input type="time" defaultValue="18:00" /></label></div></div></div>}<footer><button className="button ghost" onClick={step === 1 ? close : () => setStep(1)}>{step === 1 ? "취소" : "이전"}</button><button className="button primary" onClick={() => step === 1 ? setStep(2) : saveClass()}>{step === 1 ? "다음: 강사·수업료" : "저장하고 대상 선택"} →</button></footer></section></div>;
+  return <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="form-title"><button className="overlay-bg" onClick={close} aria-label="닫기" /><section className="drawer"><header><div><span className="section-kicker">NEW CLASS</span><h2 id="form-title">새 수업 등록</h2></div><button className="close-button" onClick={close} aria-label="닫기">×</button></header><div className="stepper"><span className="active">1 <b>수업 정보</b></span><i /><span className={step === 2 ? "active" : ""}>2 <b>강사·수업료</b></span><i /><span>3 <b>확인</b></span></div>{error && <div className="form-error" role="alert">{error}</div>}{step === 1 ? <div className="form-body"><div className="form-section"><h3>기본 정보</h3><div className="form-grid"><label className="wide">수업명<input defaultValue={draft.current.title} onChange={event => draft.current.title = event.target.value} /></label><label>기관명<input defaultValue={draft.current.institution} onChange={event => draft.current.institution = event.target.value} /></label><label>담당자<input placeholder="담당자명 · 연락처" onChange={event => draft.current.contact = event.target.value} /></label><label>수업 날짜<input type="date" defaultValue={draft.current.classDate} onChange={event => draft.current.classDate = event.target.value} /></label><label>수업 시간<div className="split-input"><input type="time" defaultValue={draft.current.startTime} onChange={event => draft.current.startTime = event.target.value} /><span>–</span><input type="time" defaultValue={draft.current.endTime} onChange={event => draft.current.endTime = event.target.value} /></div></label><label className="wide">장소·주소<input defaultValue={draft.current.address} onChange={event => draft.current.address = event.target.value} /></label></div></div><div className="form-section"><h3>수업 상세</h3><div className="form-grid thirds"><label>대상<select defaultValue={draft.current.targetGroup} onChange={event => draft.current.targetGroup = event.target.value}><option>중학생</option><option>초등학생</option><option>고등학생</option></select></label><label>학년<select defaultValue={draft.current.grade} onChange={event => draft.current.grade = event.target.value}><option>1~2학년</option><option>전 학년</option></select></label><label>참여 인원<input type="number" min="1" defaultValue={draft.current.participantCount} onChange={event => draft.current.participantCount = Number(event.target.value)} /></label><label className="wide">수업 내용<textarea defaultValue={draft.current.description} onChange={event => draft.current.description = event.target.value} /></label></div></div></div> : <div className="form-body"><div className="form-section"><h3>역할별 필요 인원</h3><div className="role-setting"><article><div><RoleBadge role="주강사" /><p>수업을 총괄하고 진행합니다.</p></div><strong>1명 <small>필수</small></strong></article><article><div><RoleBadge role="보조강사" /><p>실습과 모둠 활동을 지원합니다.</p></div><div className="counter"><button onClick={() => setAssistants(Math.max(0, assistants - 1))}>−</button><b>{assistants}명</b><button onClick={() => setAssistants(Math.min(2, assistants + 1))}>＋</button></div></article></div></div><div className="form-section"><h3>역할별 수업료</h3><div className="fee-fields"><label><span><RoleBadge role="주강사" /> 1인 지급액</span><div><input inputMode="numeric" defaultValue="300,000" onChange={event => draft.current.leadFee = numberValue(event.target.value)} /><b>원</b></div></label><label className={assistants === 0 ? "disabled" : ""}><span><RoleBadge role="보조강사" /> 1인당 지급액</span><div><input inputMode="numeric" defaultValue={assistants ? "150,000" : ""} onChange={event => draft.current.assistantFee = numberValue(event.target.value)} disabled={assistants === 0} /><b>원</b></div></label></div><label className="full-label">수업료 안내사항<textarea defaultValue={draft.current.feeNotes} onChange={event => draft.current.feeNotes = event.target.value} /></label><p className="info-callout"><span>i</span> 입력한 금액은 모집 안내와 최종 배정 알림에 역할별로 표시됩니다.</p></div><div className="form-section"><h3>응답 마감</h3><div className="form-grid"><label>마감 날짜<input type="date" defaultValue={draft.current.deadlineDate} onChange={event => draft.current.deadlineDate = event.target.value} /></label><label>마감 시간<input type="time" defaultValue={draft.current.deadlineTime} onChange={event => draft.current.deadlineTime = event.target.value} /></label></div></div></div>}<footer><button className="button ghost" disabled={saving} onClick={step === 1 ? close : () => setStep(1)}>{step === 1 ? "취소" : "이전"}</button><button className="button primary" disabled={saving} onClick={() => step === 1 ? setStep(2) : void saveClass()}>{saving ? "저장 중…" : step === 1 ? "다음: 강사·수업료" : "저장하고 수업 목록 보기"} →</button></footer></section></div>;
 }
 
 function InstructorMobile({ onBack }: { onBack: () => void }) {
@@ -283,15 +363,27 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
   const [screen, setScreen] = useState<Screen>("home");
   const [showForm, setShowForm] = useState(false);
   const [instructorMode, setInstructorMode] = useState(false);
+  const [storedClasses, setStoredClasses] = useState<StoredClass[]>([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  useEffect(() => {
+    fetch("/api/admin/classes")
+      .then(async response => {
+        if (!response.ok) throw new Error("classes_unavailable");
+        return response.json() as Promise<{ classes: StoredClass[] }>;
+      })
+      .then(result => setStoredClasses(result.classes))
+      .finally(() => setClassesLoading(false));
+  }, []);
+  const classItems = useMemo(() => [...storedClasses.map(storedClassToListItem), ...demoClasses], [storedClasses]);
   const content = useMemo(() => {
     if (screen === "home") return <HomeScreen go={setScreen} adminName={currentAdmin.name} />;
-    if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} goRequests={() => setScreen("requests")} />;
+    if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} goRequests={() => setScreen("requests")} classItems={classItems} loading={classesLoading} />;
     if (screen === "requests") return <RequestsScreen />;
     if (screen === "schedule") return <ScheduleScreen />;
     if (screen === "instructors") return <InstructorsScreen />;
     if (screen === "approvals") return <ApprovalsScreen currentRole={currentAdmin.role} />;
     return <NotificationsScreen />;
-  }, [currentAdmin.name, currentAdmin.role, screen]);
+  }, [classItems, classesLoading, currentAdmin.name, currentAdmin.role, screen]);
   if (instructorMode) return <InstructorMobile onBack={() => setInstructorMode(false)} />;
-  return <div className="app-shell"><Sidebar screen={screen} setScreen={setScreen} canManageMembers /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} />}</div>;
+  return <div className="app-shell"><Sidebar screen={screen} setScreen={setScreen} canManageMembers /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} onCreated={item => { setStoredClasses(current => [item, ...current]); setScreen("classes"); }} />}</div>;
 }
