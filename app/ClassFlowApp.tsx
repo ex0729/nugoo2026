@@ -2,7 +2,6 @@
 /* eslint-disable jsx-a11y/aria-role, jsx-a11y/no-autofocus, react-hooks/refs -- `role` is a domain prop; form refs preserve values across the two unmounted steps. */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 
 type Screen = "home" | "classes" | "requests" | "schedule" | "instructors" | "approvals" | "notifications";
 type ResponseChoice = "available" | "conditional" | "unavailable" | null;
@@ -128,7 +127,7 @@ function Topbar({ screen, onInstructor, onCreate, admin }: { screen: Screen; onI
         <button className="button primary" onClick={onCreate}><span aria-hidden="true">＋</span> 수업 등록</button>
         <div className="profile" title={admin.email}><span>{admin.name}</span><b>{admin.name[0]}</b></div>
         <a className="button ghost top-settings-button" href="/settings">설정</a>
-        <Link className="button ghost logout-button" href="/auth/signout">로그아웃</Link>
+        <a className="button ghost logout-button" href="/auth/signout">로그아웃</a>
       </div>
     </header>
   );

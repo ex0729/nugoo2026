@@ -1,7 +1,6 @@
 "use client";
-/* eslint-disable react-hooks/set-state-in-effect -- this effect synchronizes protected Supabase settings data. */
+/* eslint-disable react-hooks/set-state-in-effect, @next/next/no-html-link-for-pages -- vinext client prefetch is unreliable; full navigation is intentional for protected routes. */
 
-import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 
@@ -129,11 +128,11 @@ export default function SettingsClient({ currentAdmin }: { currentAdmin: AdminId
 
   return <main className="settings-page">
     <header className="settings-header">
-      <Link href="/" className="settings-brand"><span className="brand-mark">C</span><span>클래스플로우<small>OPERATIONS SETTINGS</small></span></Link>
-      <div><span><b>{currentAdmin.name}</b><small>{currentAdmin.email}</small></span><Link className="button secondary settings-logout" href="/auth/signout">로그아웃</Link></div>
+      <a href="/" className="settings-brand"><span className="brand-mark">C</span><span>클래스플로우<small>OPERATIONS SETTINGS</small></span></a>
+      <div><span><b>{currentAdmin.name}</b><small>{currentAdmin.email}</small></span><a className="button secondary settings-logout" href="/auth/signout">로그아웃</a></div>
     </header>
     <div className="settings-shell">
-      <aside className="settings-menu"><Link href="/">← 운영센터로 돌아가기</Link><p>설정</p><button className={section === "admins" ? "active" : ""} onClick={() => setSection("admins")}><span>◎</span>관리자 관리</button><button className={section === "security" ? "active" : ""} onClick={() => setSection("security")}><span>◈</span>보안·활동 기록</button></aside>
+      <aside className="settings-menu"><a href="/">← 운영센터로 돌아가기</a><p>설정</p><button className={section === "admins" ? "active" : ""} onClick={() => setSection("admins")}><span>◎</span>관리자 관리</button><button className={section === "security" ? "active" : ""} onClick={() => setSection("security")}><span>◈</span>보안·활동 기록</button></aside>
       <section className="settings-content">
         {message && <div className="settings-message success" role="status">✓ {message}</div>}
         {error && <div className="settings-message error" role="alert">! {error}</div>}
