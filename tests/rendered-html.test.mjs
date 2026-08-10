@@ -86,6 +86,7 @@ test("persists newly registered classes and uses a reliable settings navigation"
     readFile(new URL("../supabase/migrations/202608100001_persist_classes.sql", import.meta.url), "utf8"),
   ]);
   assert.match(app, /<a className="settings" href="\/settings">/);
+  assert.match(app, /top-settings-button" href="\/settings">설정/);
   assert.match(app, /fetch\("\/api\/admin\/classes"/);
   assert.match(app, /onCreated\(result\.class\)/);
   assert.match(api, /\.from\("classes"\)\.insert/);

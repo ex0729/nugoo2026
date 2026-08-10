@@ -127,6 +127,7 @@ function Topbar({ screen, onInstructor, onCreate, admin }: { screen: Screen; onI
         <button className="button secondary instructor-preview" onClick={onInstructor}>강사 화면 보기 <span>→</span></button>
         <button className="button primary" onClick={onCreate}><span aria-hidden="true">＋</span> 수업 등록</button>
         <div className="profile" title={admin.email}><span>{admin.name}</span><b>{admin.name[0]}</b></div>
+        <a className="button ghost top-settings-button" href="/settings">설정</a>
         <Link className="button ghost logout-button" href="/auth/signout">로그아웃</Link>
       </div>
     </header>
