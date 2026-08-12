@@ -154,6 +154,15 @@ test("keeps assignment checkboxes and candidate buttons on one selection state",
   assert.match(app, /onClick=\{\(\) => toggleAssign\(c\.name\)\}/);
 });
 
+test("switches the schedule between real weekly and monthly calendars", async () => {
+  const app = await readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8");
+  assert.match(app, /setView\("month"\)/);
+  assert.match(app, /className="panel month-calendar"/);
+  assert.match(app, /classesForDate\(day\)/);
+  assert.match(app, /<ScheduleScreen classItems=\{storedClasses\}/);
+  assert.doesNotMatch(app, /const days = \["8월 10일 월"/);
+});
+
 test("stores internal notifications and supports web push reminders", async () => {
   const [app, dashboard, reminderApi, notificationApi, adminNotificationApi, pushApi, serviceWorker, migration] = await Promise.all([
     readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8"),
