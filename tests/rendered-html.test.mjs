@@ -31,10 +31,10 @@ test("server-renders the public landing and role selection", async () => {
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/start/page.tsx", import.meta.url), "utf8"),
   ]);
-  assert.doesNotMatch(landingSource, /next\/link/);
-  assert.doesNotMatch(startSource, /next\/link/);
-  assert.match(landingSource, /<a className="landing-primary" href=\{portal\.href\}>/);
-  assert.match(startSource, /<a className="portal-option operations" href="\/login">/);
+  assert.match(landingSource, /HardNavigationLink className="landing-primary" href=\{portal\.href\}/);
+  assert.match(startSource, /HardNavigationLink className="portal-option operations" href="\/login"/);
+  const hardNavigation = await readFile(new URL("../components/HardNavigationLink.tsx", import.meta.url), "utf8");
+  assert.match(hardNavigation, /window\.location\.assign\(href\)/);
 });
 
 test("protects the operations dashboard behind authentication", async () => {
