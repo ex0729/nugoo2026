@@ -111,15 +111,6 @@ const candidates = [
   { name: "한도윤", initials: "한", role: "두 역할", status: "미응답", time: "최근 알림 어제 16:00", subject: "코딩 · 메이커", region: "서울 동부", conflict: false, condition: "" },
 ];
 
-const instructors = [
-  { name: "김민준", subjects: "AI · 파이썬 · 데이터", region: "서울 전역", classes: 18, rate: "94%", state: "활성" },
-  { name: "박서연", subjects: "AI · 메이커 · 로봇", region: "서울 동부", classes: 14, rate: "88%", state: "활성" },
-  { name: "최현우", subjects: "코딩 · 로봇", region: "서울·경기", classes: 11, rate: "91%", state: "활성" },
-  { name: "이지아", subjects: "AI · 콘텐츠 제작", region: "서울 서부", classes: 9, rate: "86%", state: "활성" },
-  { name: "한도윤", subjects: "코딩 · 메이커", region: "서울 동부", classes: 6, rate: "72%", state: "승인 대기" },
-  { name: "정유진", subjects: "AI · 데이터", region: "서울 전역", classes: 12, rate: "89%", state: "활성" },
-];
-
 function recordAdminActivity(action: string, details: Record<string, unknown> = {}) {
   void fetch("/api/admin/activity", {
     method: "POST",
@@ -400,14 +391,35 @@ function ScheduleScreen() {
 
 function InstructorsScreen() {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("전체");
+  const [filter, setFilter] = useState<"전체" | "활성" | "승인 대기" | "이용 중지">("전체");
+  const [instructorMembers, setInstructorMembers] = useState<MemberRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/members", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("instructors_unavailable");
+        return response.json() as Promise<{ members: MemberRecord[] }>;
+      })
+      .then(data => setInstructorMembers(data.members.filter(member => member.role === "instructor")))
+      .catch(() => setError("가입 강사 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statusLabel: Record<MemberRecord["status"], "활성" | "승인 대기" | "이용 중지"> = {
+    active: "활성",
+    pending: "승인 대기",
+    suspended: "이용 중지",
+  };
   const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
-  const visible = instructors.filter(p => {
-    const matchesState = filter === "전체" || p.state === filter;
-    const matchesQuery = !normalizedQuery || [p.name, p.subjects, p.region].some(value => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
+  const visible = instructorMembers.filter(member => {
+    const matchesState = filter === "전체" || statusLabel[member.status] === filter;
+    const matchesQuery = !normalizedQuery || [member.full_name, member.email].some(value => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
     return matchesState && matchesQuery;
   });
-  return <div className="screen-stack"><section className="toolbar"><div className="search"><span>⌕</span><input aria-label="강사 검색" placeholder="강사명, 과목, 지역 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{["전체", "활성", "승인 대기"].map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value} {value === "전체" ? instructors.length : instructors.filter(p => p.state === value).length}</button>)}</div><button className="button secondary">강사 초대</button></section><section className="instructor-grid">{visible.map((p, i) => <article className="panel instructor-card" key={p.name}><div className="instructor-card-head"><span className={`avatar avatar-${i % 4}`}>{p.name[0]}</span><div><h3>{p.name}</h3><p>{p.subjects}</p></div><StatusBadge tone={p.state === "활성" ? "green" : "amber"}>{p.state}</StatusBadge></div><dl><div><dt>활동 지역</dt><dd>{p.region}</dd></div><div><dt>확정 수업</dt><dd>{p.classes}회</dd></div><div><dt>응답률</dt><dd>{p.rate}</dd></div></dl><div className="instructor-card-actions"><button>프로필 보기</button><button>일정 확인</button></div></article>)}{visible.length === 0 && <div className="panel empty-state">검색 조건에 맞는 강사가 없습니다.</div>}</section></div>;
+  const filters = ["전체", "활성", "승인 대기", "이용 중지"] as const;
+  return <div className="screen-stack"><section className="toolbar"><div className="search"><span>⌕</span><input aria-label="강사 검색" placeholder="강사명 또는 이메일 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{filters.map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value} {value === "전체" ? instructorMembers.length : instructorMembers.filter(member => statusLabel[member.status] === value).length}</button>)}</div></section>{error && <section className="notice-banner error-banner"><span>!</span><div><b>강사 목록을 표시할 수 없습니다</b><p>{error}</p></div></section>}<section className="instructor-grid">{loading && <div className="panel empty-state">실제 가입 강사 정보를 불러오는 중입니다.</div>}{!loading && visible.map((member, i) => <article className="panel instructor-card" key={member.user_id}><div className="instructor-card-head"><span className={`avatar avatar-${i % 4}`}>{member.full_name[0]}</span><div><h3>{member.full_name}</h3><p>{member.email}</p></div><StatusBadge tone={member.status === "active" ? "green" : member.status === "pending" ? "amber" : "red"}>{statusLabel[member.status]}</StatusBadge></div><dl><div><dt>가입일</dt><dd>{new Date(member.created_at).toLocaleDateString("ko-KR")}</dd></div><div><dt>회원 유형</dt><dd>강사</dd></div><div><dt>계정 상태</dt><dd>{statusLabel[member.status]}</dd></div></dl></article>)}{!loading && !error && visible.length === 0 && <div className="panel empty-state">검색 조건에 맞는 실제 가입 강사가 없습니다.</div>}</section></div>;
 }
 
 type MemberRecord = {

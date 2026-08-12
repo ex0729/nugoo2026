@@ -87,6 +87,14 @@ test("routes approved instructors into a protected dashboard", async () => {
   assert.match(signout, /requestedNext === "\/instructor\/login"/);
 });
 
+test("shows real Supabase instructor members without the demo instructor directory", async () => {
+  const app = await readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /const instructors = \[/);
+  assert.match(app, /fetch\("\/api\/admin\/members", \{ cache: "no-store" \}\)/);
+  assert.match(app, /data\.members\.filter\(member => member\.role === "instructor"\)/);
+  assert.match(app, /실제 가입 강사 정보를 불러오는 중입니다/);
+});
+
 test("protects administrator settings and ships its management workflows", async () => {
   const response = await render("/settings");
   assert.equal(response.status, 307);
