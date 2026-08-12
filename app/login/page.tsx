@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [signingIn, setSigningIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,14 +52,17 @@ export default function LoginPage() {
           </label>
           <label>
             비밀번호
-            <input
-              type="password"
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-              autoComplete="current-password"
-              required
-              minLength={8}
-            />
+            <span className="password-input-wrap">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+                minLength={8}
+              />
+              <button type="button" className="password-visibility" aria-label={showPassword ? "비밀번호 감추기" : "비밀번호 보기"} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "감추기" : "보기"}</button>
+            </span>
           </label>
           <button className="button primary" disabled={signingIn}>
             {signingIn ? "로그인 중…" : "로그인"}

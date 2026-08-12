@@ -46,3 +46,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const push = notificationType ? await deliverClassNotifications(supabase, id, recipients, notificationType) : { sent: 0, failed: 0, unavailable: 0 };
   return NextResponse.json({ class: classItem, delivery: { internal: recipients.length, push } });
 }
+
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!await authorize()) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("delete_class", { target_class_id: id });
+
+  if (error) {
+    if (error.message.includes("class_not_found")) return NextResponse.json({ error: "class_not_found" }, { status: 404 });
+    if (error.message.includes("class_delete_locked")) return NextResponse.json({ error: "class_delete_locked" }, { status: 409 });
+    return NextResponse.json({ error: "class_delete_failed" }, { status: 400 });
+  }
+
+  return NextResponse.json({ deletedId: id });
+}

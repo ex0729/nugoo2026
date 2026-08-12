@@ -20,6 +20,7 @@ const actionLabels: Record<string, string> = {
   class_created: "수업 생성",
   class_updated: "수업 수정",
   class_cancelled: "수업 취소",
+  class_deleted: "수업 삭제",
   assignment_requested: "배정 요청",
   assignment_reminded: "배정 재알림",
   assignment_confirmed: "강사 최종 배정",

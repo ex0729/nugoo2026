@@ -7,13 +7,13 @@ type Screen = "home" | "classes" | "requests" | "schedule" | "instructors" | "ap
 type ResponseChoice = "available" | "conditional" | "unavailable" | null;
 type AdminIdentity = { name: string; email: string; role: "service_admin" | "super_admin" };
 
-const navItems: { id: Screen; label: string; icon: string; badge?: number }[] = [
+const navItems: { id: Screen; label: string; icon: string }[] = [
   { id: "home", label: "홈", icon: "⌂" },
   { id: "classes", label: "수업", icon: "▣" },
-  { id: "requests", label: "배정 요청", icon: "↗", badge: 3 },
+  { id: "requests", label: "배정 요청", icon: "↗" },
   { id: "schedule", label: "일정", icon: "□" },
   { id: "instructors", label: "강사", icon: "◎" },
-  { id: "approvals", label: "회원 승인", icon: "✓", badge: 2 },
+  { id: "approvals", label: "회원 승인", icon: "✓" },
   { id: "notifications", label: "알림 이력", icon: "◷" },
 ];
 
@@ -146,12 +146,12 @@ function Topbar({ screen, onInstructor, onCreate, onNotifications, notificationC
   );
 }
 
-function Sidebar({ screen, setScreen, canManageMembers }: { screen: Screen; setScreen: (s: Screen) => void; canManageMembers: boolean }) {
+function Sidebar({ screen, setScreen, canManageMembers, badges }: { screen: Screen; setScreen: (s: Screen) => void; canManageMembers: boolean; badges: Partial<Record<Screen, number>> }) {
   return (
     <aside className="sidebar">
       <button className="brand" onClick={() => setScreen("home")}><span className="brand-mark">C</span><span>클래스플로우<small>Instructor Ops</small></span></button>
       <nav aria-label="주 메뉴">
-        {navItems.filter(item => item.id !== "approvals" || canManageMembers).map(item => <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span className="nav-icon" aria-hidden="true">{item.icon}</span>{item.label}{item.badge ? <em>{item.badge}</em> : null}</button>)}
+        {navItems.filter(item => item.id !== "approvals" || canManageMembers).map(item => { const badge = badges[item.id] ?? 0; return <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)}><span className="nav-icon" aria-hidden="true">{item.icon}</span>{item.label}{badge > 0 ? <em>{badge}</em> : null}</button>; })}
       </nav>
       <div className="sidebar-help"><span aria-hidden="true">?</span><div><b>도움이 필요하신가요?</b><small>운영 가이드 확인하기</small></div></div>
       <a className="settings" href="/settings"><span aria-hidden="true">⚙</span> 설정</a>
@@ -197,12 +197,14 @@ function HomeScreen({ go, adminName }: { go: (s: Screen) => void; adminName: str
 
 type PeriodFilter = "all" | "today" | "week" | "month" | "custom";
 
-function ClassesScreen({ onCreate, openClass, classItems, loading, error }: { onCreate: () => void; openClass: (item: StoredClass, tab?: "detail" | "recruitment" | "responses" | "assignment") => void; classItems: StoredClass[]; loading: boolean; error: string }) {
+function ClassesScreen({ onCreate, openClass, onDeleted, classItems, loading, error }: { onCreate: () => void; openClass: (item: StoredClass, tab?: "detail" | "recruitment" | "responses" | "assignment") => void; onDeleted: (classId: string) => void; classItems: StoredClass[]; loading: boolean; error: string }) {
   const [filter, setFilter] = useState("전체");
   const [period, setPeriod] = useState<PeriodFilter>("all");
   const [query, setQuery] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -217,10 +219,24 @@ function ClassesScreen({ onCreate, openClass, classItems, loading, error }: { on
     return matchesStatus && matchesQuery && matchesPeriod;
   }).sort((a, b) => classStatusMeta[a.operational_status].priority - classStatusMeta[b.operational_status].priority || a.class_date.localeCompare(b.class_date));
 
+  async function deleteClass(item: StoredClass) {
+    if (!window.confirm(`“${item.institution} · ${item.title}” 수업을 삭제할까요?\n삭제한 수업은 복구할 수 없습니다.`)) return;
+    setDeletingId(item.id);
+    setDeleteError("");
+    const response = await fetch(`/api/admin/classes/${item.id}`, { method: "DELETE" });
+    const result = await response.json().catch(() => null) as { error?: string } | null;
+    setDeletingId(null);
+    if (!response.ok) {
+      setDeleteError(result?.error === "class_delete_locked" ? "모집 또는 배정이 시작된 수업은 기록 보호를 위해 삭제할 수 없습니다. 수업 취소를 사용해 주세요." : "수업을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    onDeleted(item.id);
+  }
+
   return <div className="screen-stack class-console">
     <section className="class-console-heading"><div><span className="section-kicker">CLASS OPERATIONS</span><h2>수업 운영 콘솔</h2><p>지금 처리가 필요한 수업부터 확인하고 모집과 배정을 이어가세요.</p></div><button className="button primary" onClick={onCreate}>＋ 새 수업 등록</button></section>
     <section className="panel class-console-filters"><div className="search"><span aria-hidden="true">⌕</span><input aria-label="수업 검색" placeholder="기관명 / 수업명 / 강사명 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{["전체", "모집 중", "배정 필요", "배정 완료", "완료", "취소"].map(value => <button className={filter === value ? "active" : ""} onClick={() => setFilter(value)} key={value}>{value}</button>)}</div><div className="period-filter"><span>기간</span>{([['all','전체'],['today','오늘'],['week','이번 주'],['month','이번 달'],['custom','직접 선택']] as const).map(([value,label]) => <button className={period === value ? "active" : ""} onClick={() => setPeriod(value)} key={value}>{label}</button>)}</div>{period === "custom" && <div className="custom-period"><label>시작일<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><span>–</span><label>종료일<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label></div>}</section>
-    <section className="panel class-operations-list"><header><p><b>{visible.length}개 수업</b><span>처리 필요 상태 → 가까운 수업일 순</span></p></header>{loading && <div className="empty-state">실제 수업 정보를 불러오는 중입니다.</div>}{error && <div className="empty-state error-state">{error}</div>}{!loading && !error && visible.map(item => { const meta = classStatusMeta[item.operational_status]; return <article className={`class-operation-row status-${meta.tone}`} key={item.id} role="button" tabIndex={0} onClick={() => openClass(item)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClass(item); } }}><div className="class-operation-main"><div className="class-operation-status"><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge><small>{meta.description}</small></div><h3>{item.institution} · {item.title}</h3><p>{classDateLabel(item.class_date)} {item.start_time.slice(0,5)}~{item.end_time.slice(0,5)}<span>·</span>{item.address}</p><div className="class-operation-fees"><b>주강사 {item.lead_count}명 · {won(item.lead_fee)}</b><b>보조강사 {item.assistant_count}명 · {item.assistant_count ? `1인당 ${won(item.assistant_fee)}` : "모집 없음"}</b></div></div><div className="class-operation-progress"><span>모집 현황</span><strong>주강사 {item.lead_response_count}명 응답 · 보조강사 {item.assistant_response_count}명 응답</strong><small>모집 대상 {item.target_count}명 · 응답 마감 {new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.response_deadline))}</small></div><div className="class-operation-actions"><button className="button secondary" onClick={event => { event.stopPropagation(); openClass(item, item.target_count ? "responses" : "recruitment"); }}>{item.target_count ? "응답 현황" : "강사 모집"}</button><button className="button primary" disabled={item.operational_status !== "assignment_needed" && item.operational_status !== "reviewing"} onClick={event => { event.stopPropagation(); openClass(item, "assignment"); }}>배정하기</button></div></article>; })}{!loading && !error && visible.length === 0 && <div className="empty-state"><b>조건에 맞는 수업이 없습니다.</b><p>새 수업을 등록하거나 검색·필터 조건을 바꿔보세요.</p></div>}</section>
+    <section className="panel class-operations-list"><header><p><b>{visible.length}개 수업</b><span>처리 필요 상태 → 가까운 수업일 순</span></p></header>{deleteError && <div className="class-list-error" role="alert">{deleteError}</div>}{loading && <div className="empty-state">실제 수업 정보를 불러오는 중입니다.</div>}{error && <div className="empty-state error-state">{error}</div>}{!loading && !error && visible.map(item => { const meta = classStatusMeta[item.operational_status]; return <article className={`class-operation-row status-${meta.tone}`} key={item.id} role="button" tabIndex={0} onClick={() => openClass(item)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClass(item); } }}><div className="class-operation-main"><div className="class-operation-status"><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge><small>{meta.description}</small></div><h3>{item.institution} · {item.title}</h3><p>{classDateLabel(item.class_date)} {item.start_time.slice(0,5)}~{item.end_time.slice(0,5)}<span>·</span>{item.address}</p><div className="class-operation-fees"><b>주강사 {item.lead_count}명 · {won(item.lead_fee)}</b><b>보조강사 {item.assistant_count}명 · {item.assistant_count ? `1인당 ${won(item.assistant_fee)}` : "모집 없음"}</b></div></div><div className="class-operation-progress"><span>모집 현황</span><strong>주강사 {item.lead_response_count}명 응답 · 보조강사 {item.assistant_response_count}명 응답</strong><small>모집 대상 {item.target_count}명 · 응답 마감 {new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.response_deadline))}</small></div><div className="class-operation-actions"><button className="button secondary" onClick={event => { event.stopPropagation(); openClass(item, item.target_count ? "responses" : "recruitment"); }}>{item.target_count ? "응답 현황" : "강사 모집"}</button><button className="button primary" disabled={item.operational_status !== "assignment_needed" && item.operational_status !== "reviewing"} onClick={event => { event.stopPropagation(); openClass(item, "assignment"); }}>배정하기</button><button className="button danger class-delete-button" disabled={deletingId === item.id || item.status !== "registered" || item.target_count > 0} title={item.status === "registered" && item.target_count === 0 ? "수업 삭제" : "모집 전 등록 상태에서만 삭제할 수 있습니다"} onClick={event => { event.stopPropagation(); void deleteClass(item); }}>{deletingId === item.id ? "삭제 중…" : "삭제"}</button></div></article>; })}{!loading && !error && visible.length === 0 && <div className="empty-state"><b>조건에 맞는 수업이 없습니다.</b><p>새 수업을 등록하거나 검색·필터 조건을 바꿔보세요.</p></div>}</section>
   </div>;
 }
 
@@ -390,12 +406,14 @@ function ScheduleScreen() {
   return <div className="screen-stack"><section className="toolbar"><div><h2 className="content-title">8월 2주</h2><p className="content-subtitle">확정 수업 8건 · 배정 강사 13명</p></div><div className="calendar-controls"><button>‹</button><button>오늘</button><button>›</button></div><div className="filter-tabs"><button className="active">주간</button><button>월간</button></div></section><section className="panel calendar"><div className="calendar-grid"><div className="time-column head" />{days.map((d, i) => <div className={`day-head ${i === 2 ? "today" : ""}`} key={d}><b>{d.split(" ").slice(2).join(" ")}</b><span>{10 + i}</span></div>)}{["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00"].map((time, row) => <div className="calendar-row" key={time} style={{ gridRow: row + 2 }}><div className="time-label">{time}</div>{days.map((_, col) => <div className="calendar-cell" key={col} />)}</div>)}<article className="calendar-event blue" style={{ gridColumn: 4, gridRow: "3 / span 2" }}><b>AI 창의융합 체험</b><span>성수중학교</span><small>김민준 외 2명</small></article><article className="calendar-event mint" style={{ gridColumn: 5, gridRow: "2 / span 3" }}><b>로봇 코딩 캠프</b><span>한빛초등학교</span><small>박서연 외 2명</small></article><article className="calendar-event purple" style={{ gridColumn: 2, gridRow: "7 / span 2" }}><b>디지털 리터러시</b><span>동작청소년센터</span><small>이지아 외 1명</small></article></div></section></div>;
 }
 
-function InstructorsScreen() {
+function InstructorsScreen({ onPendingResolved }: { onPendingResolved: () => void }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"전체" | "활성" | "승인 대기" | "이용 중지">("전체");
+  const [filter, setFilter] = useState<"전체" | "활성" | "승인 대기" | "비활성">("전체");
   const [instructorMembers, setInstructorMembers] = useState<MemberRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/members", { cache: "no-store" })
@@ -408,10 +426,31 @@ function InstructorsScreen() {
       .finally(() => setLoading(false));
   }, []);
 
-  const statusLabel: Record<MemberRecord["status"], "활성" | "승인 대기" | "이용 중지"> = {
+  async function toggleInstructor(member: MemberRecord) {
+    const nextStatus: MemberRecord["status"] = member.status === "active" ? "suspended" : "active";
+    if (nextStatus === "suspended" && !window.confirm(`${member.full_name} 강사 계정을 비활성화할까요?\n비활성 계정은 강사센터에 로그인할 수 없습니다.`)) return;
+    setSavingId(member.user_id);
+    setError("");
+    setFeedback("");
+    const response = await fetch("/api/admin/members", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: member.user_id, role: "instructor", status: nextStatus }),
+    });
+    setSavingId(null);
+    if (!response.ok) {
+      setError("강사 계정 상태를 변경하지 못했습니다. 관리자 권한을 확인해 주세요.");
+      return;
+    }
+    setInstructorMembers(current => current.map(item => item.user_id === member.user_id ? { ...item, status: nextStatus } : item));
+    if (member.status === "pending" && nextStatus === "active") onPendingResolved();
+    setFeedback(`${member.full_name} 강사 계정을 ${nextStatus === "active" ? "활성화" : "비활성화"}했습니다.`);
+  }
+
+  const statusLabel: Record<MemberRecord["status"], "활성" | "승인 대기" | "비활성"> = {
     active: "활성",
     pending: "승인 대기",
-    suspended: "이용 중지",
+    suspended: "비활성",
   };
   const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
   const visible = instructorMembers.filter(member => {
@@ -419,8 +458,8 @@ function InstructorsScreen() {
     const matchesQuery = !normalizedQuery || [member.full_name, member.email].some(value => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
     return matchesState && matchesQuery;
   });
-  const filters = ["전체", "활성", "승인 대기", "이용 중지"] as const;
-  return <div className="screen-stack"><section className="toolbar"><div className="search"><span>⌕</span><input aria-label="강사 검색" placeholder="강사명 또는 이메일 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{filters.map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value} {value === "전체" ? instructorMembers.length : instructorMembers.filter(member => statusLabel[member.status] === value).length}</button>)}</div></section>{error && <section className="notice-banner error-banner"><span>!</span><div><b>강사 목록을 표시할 수 없습니다</b><p>{error}</p></div></section>}<section className="instructor-grid">{loading && <div className="panel empty-state">실제 가입 강사 정보를 불러오는 중입니다.</div>}{!loading && visible.map((member, i) => <article className="panel instructor-card" key={member.user_id}><div className="instructor-card-head"><span className={`avatar avatar-${i % 4}`}>{member.full_name[0]}</span><div><h3>{member.full_name}</h3><p>{member.email}</p></div><StatusBadge tone={member.status === "active" ? "green" : member.status === "pending" ? "amber" : "red"}>{statusLabel[member.status]}</StatusBadge></div><dl><div><dt>가입일</dt><dd>{new Date(member.created_at).toLocaleDateString("ko-KR")}</dd></div><div><dt>회원 유형</dt><dd>강사</dd></div><div><dt>계정 상태</dt><dd>{statusLabel[member.status]}</dd></div></dl></article>)}{!loading && !error && visible.length === 0 && <div className="panel empty-state">검색 조건에 맞는 실제 가입 강사가 없습니다.</div>}</section></div>;
+  const filters = ["전체", "활성", "승인 대기", "비활성"] as const;
+  return <div className="screen-stack"><section className="toolbar"><div className="search"><span>⌕</span><input aria-label="강사 검색" placeholder="강사명 또는 이메일 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{filters.map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value} {value === "전체" ? instructorMembers.length : instructorMembers.filter(member => statusLabel[member.status] === value).length}</button>)}</div></section>{feedback && <section className="notice-banner"><span>✓</span><div><b>{feedback}</b></div></section>}{error && <section className="notice-banner error-banner"><span>!</span><div><b>강사 계정 상태를 변경할 수 없습니다</b><p>{error}</p></div></section>}<section className="instructor-grid">{loading && <div className="panel empty-state">실제 가입 강사 정보를 불러오는 중입니다.</div>}{!loading && visible.map((member, i) => <article className="panel instructor-card" key={member.user_id}><div className="instructor-card-head"><span className={`avatar avatar-${i % 4}`}>{member.full_name[0]}</span><div><h3>{member.full_name}</h3><p>{member.email}</p></div><StatusBadge tone={member.status === "active" ? "green" : member.status === "pending" ? "amber" : "red"}>{statusLabel[member.status]}</StatusBadge></div><dl><div><dt>가입일</dt><dd>{new Date(member.created_at).toLocaleDateString("ko-KR")}</dd></div><div><dt>회원 유형</dt><dd>강사</dd></div><div><dt>계정 상태</dt><dd>{statusLabel[member.status]}</dd></div></dl><button className={`button instructor-status-button ${member.status === "active" ? "danger" : "secondary"}`} disabled={savingId === member.user_id} onClick={() => void toggleInstructor(member)}>{savingId === member.user_id ? "변경 중…" : member.status === "active" ? "비활성화" : "활성화"}</button></article>)}{!loading && !error && visible.length === 0 && <div className="panel empty-state">검색 조건에 맞는 실제 가입 강사가 없습니다.</div>}</section></div>;
 }
 
 type MemberRecord = {
@@ -432,7 +471,7 @@ type MemberRecord = {
   created_at: string;
 };
 
-function ApprovalsScreen({ currentRole }: { currentRole: AdminIdentity["role"] }) {
+function ApprovalsScreen({ currentRole, onPendingCountChange }: { currentRole: AdminIdentity["role"]; onPendingCountChange: (count: number) => void }) {
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [roles, setRoles] = useState<Record<string, MemberRecord["role"]>>({});
   const [loading, setLoading] = useState(true);
@@ -447,10 +486,11 @@ function ApprovalsScreen({ currentRole }: { currentRole: AdminIdentity["role"] }
       .then(data => {
         setMembers(data.members);
         setRoles(Object.fromEntries(data.members.map(member => [member.user_id, member.role])));
+        onPendingCountChange(data.members.filter(member => member.status === "pending").length);
       })
       .catch(() => setError("회원 정보를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [onPendingCountChange]);
 
   async function updateMember(member: MemberRecord, status: MemberRecord["status"]) {
     setError("");
@@ -465,7 +505,11 @@ function ApprovalsScreen({ currentRole }: { currentRole: AdminIdentity["role"] }
       return;
     }
 
-    setMembers(current => current.map(item => item.user_id === member.user_id ? { ...item, role: roles[member.user_id], status } : item));
+    setMembers(current => {
+      const next = current.map(item => item.user_id === member.user_id ? { ...item, role: roles[member.user_id], status } : item);
+      onPendingCountChange(next.filter(item => item.status === "pending").length);
+      return next;
+    });
   }
 
   const pending = members.filter(member => member.status === "pending");
@@ -581,6 +625,7 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [notificationsError, setNotificationsError] = useState("");
+  const [pendingMemberCount, setPendingMemberCount] = useState(0);
   useEffect(() => {
     fetch("/api/admin/classes")
       .then(async response => {
@@ -601,19 +646,26 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
       .catch(() => setNotificationsError("실제 알림 이력을 불러오지 못했습니다."))
       .finally(() => setNotificationsLoading(false));
   }, []);
+  useEffect(() => {
+    fetch("/api/admin/members", { cache: "no-store" })
+      .then(async response => response.ok ? response.json() as Promise<{ members: MemberRecord[] }> : Promise.reject(new Error("members_unavailable")))
+      .then(result => setPendingMemberCount(result.members.filter(member => member.status === "pending").length))
+      .catch(() => setPendingMemberCount(0));
+  }, []);
   const selectedClass = storedClasses.find(item => item.id === selectedClassId) ?? null;
+  const assignmentActionCount = storedClasses.filter(item => item.operational_status === "reviewing" || item.operational_status === "assignment_needed").length;
   const updateStoredClass = (item: StoredClass) => setStoredClasses(current => current.map(value => value.id === item.id ? item : value));
   const openClass = (item: StoredClass, tab: ClassWorkspaceTab = "detail") => { setSelectedClassId(item.id); setWorkspaceTab(tab); setScreen("classes"); };
   const content = useMemo(() => {
     if (screen === "home") return <HomeScreen go={setScreen} adminName={currentAdmin.name} />;
     if (screen === "classes" && selectedClass) return <ClassWorkspace key={selectedClass.id} classItem={selectedClass} initialTab={workspaceTab} onBack={() => setSelectedClassId(null)} onUpdated={updateStoredClass} />;
-    if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} openClass={openClass} classItems={storedClasses} loading={classesLoading} error={classesError} />;
+    if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} openClass={openClass} onDeleted={classId => setStoredClasses(current => current.filter(item => item.id !== classId))} classItems={storedClasses} loading={classesLoading} error={classesError} />;
     if (screen === "requests") return <RequestsScreen />;
     if (screen === "schedule") return <ScheduleScreen />;
-    if (screen === "instructors") return <InstructorsScreen />;
-    if (screen === "approvals") return <ApprovalsScreen currentRole={currentAdmin.role} />;
+    if (screen === "instructors") return <InstructorsScreen onPendingResolved={() => setPendingMemberCount(count => Math.max(0, count - 1))} />;
+    if (screen === "approvals") return <ApprovalsScreen currentRole={currentAdmin.role} onPendingCountChange={setPendingMemberCount} />;
     return <NotificationsScreen notifications={adminNotifications} loading={notificationsLoading} error={notificationsError} />;
   }, [adminNotifications, classesError, classesLoading, currentAdmin.name, currentAdmin.role, notificationsError, notificationsLoading, screen, selectedClass, storedClasses, workspaceTab]);
   if (instructorMode) return <InstructorMobile onBack={() => setInstructorMode(false)} />;
-  return <div className="app-shell"><Sidebar screen={screen} setScreen={value => { setSelectedClassId(null); setScreen(value); }} canManageMembers={currentAdmin.role === "super_admin" || currentAdmin.role === "service_admin"} /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} onNotifications={() => { setSelectedClassId(null); setScreen("notifications"); }} notificationCount={adminNotifications.filter(item => !item.read_at).length} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} onCreated={item => { setStoredClasses(current => [item, ...current]); setSelectedClassId(item.id); setWorkspaceTab("detail"); setScreen("classes"); }} />}</div>;
+  return <div className="app-shell"><Sidebar screen={screen} setScreen={value => { setSelectedClassId(null); setScreen(value); }} canManageMembers={currentAdmin.role === "super_admin" || currentAdmin.role === "service_admin"} badges={{ requests: assignmentActionCount, approvals: pendingMemberCount }} /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} onNotifications={() => { setSelectedClassId(null); setScreen("notifications"); }} notificationCount={adminNotifications.filter(item => !item.read_at).length} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} onCreated={item => { setStoredClasses(current => [item, ...current]); setSelectedClassId(item.id); setWorkspaceTab("detail"); setScreen("classes"); }} />}</div>;
 }
