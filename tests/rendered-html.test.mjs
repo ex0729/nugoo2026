@@ -146,6 +146,14 @@ test("connects each persisted class to recruitment, responses, and final assignm
   assert.match(migration, /class_assignments/);
 });
 
+test("keeps assignment checkboxes and candidate buttons on one selection state", async () => {
+  const app = await readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8");
+  assert.match(app, /checked=\{canAssign && isAssigned\}/);
+  assert.match(app, /aria-pressed=\{isAssigned\}/);
+  assert.match(app, /onChange=\{\(\) => toggleAssign\(c\.name\)\}/);
+  assert.match(app, /onClick=\{\(\) => toggleAssign\(c\.name\)\}/);
+});
+
 test("stores internal notifications and supports web push reminders", async () => {
   const [app, dashboard, reminderApi, notificationApi, adminNotificationApi, pushApi, serviceWorker, migration] = await Promise.all([
     readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8"),

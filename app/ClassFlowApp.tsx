@@ -365,9 +365,7 @@ function ClassWorkspace({ classItem, initialTab, onBack, onUpdated }: { classIte
 function RequestsScreen() {
   const [statusFilter, setStatusFilter] = useState("전체");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
   const [assigned, setAssigned] = useState<string[]>(["김민준"]);
-  const [reminderSent, setReminderSent] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
   const filtered = candidates.filter(c => {
@@ -375,15 +373,16 @@ function RequestsScreen() {
     const matchesQuery = !normalizedQuery || [c.name, c.subject, c.region, c.role].some(value => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
     return matchesStatus && matchesQuery;
   });
-  const toggleSelected = (name: string) => setSelected(v => v.includes(name) ? v.filter(n => n !== name) : [...v, name]);
+  const assignable = filtered.filter(c => c.status === "가능" || c.status === "조건부");
   const toggleAssign = (name: string) => {
     setConfirmed(false);
     setAssigned(v => v.includes(name) ? v.filter(n => n !== name) : [...v, name]);
   };
-  const sendReminder = () => {
-    recordAdminActivity("assignment_reminded", { class_name: "AI 창의융합 체험 수업", recipients: selected.length });
-    setReminderSent(true);
-    setSelected([]);
+  const toggleAllAssignable = () => {
+    setConfirmed(false);
+    const visibleNames = assignable.map(candidate => candidate.name);
+    const allSelected = visibleNames.length > 0 && visibleNames.every(name => assigned.includes(name));
+    setAssigned(current => allSelected ? current.filter(name => !visibleNames.includes(name)) : [...new Set([...current, ...visibleNames])]);
   };
   const confirmAssignment = () => {
     recordAdminActivity("assignment_confirmed", { class_name: "AI 창의융합 체험 수업", instructors: assigned });
@@ -391,11 +390,10 @@ function RequestsScreen() {
   };
   return <div className="request-layout">
     {confirmed && <section className="notice-banner"><span>✓</span><div><b>강사 배정이 완료됐어요</b><p>선택한 주강사 1명과 보조강사 2명에게 확정 알림을 보냈습니다.</p></div></section>}
-    {reminderSent && !confirmed && <section className="notice-banner"><span>✓</span><div><b>재알림을 전송했어요</b><p>선택한 미응답 강사에게 카카오 알림톡을 다시 보냈습니다.</p></div></section>}
     <section className="panel request-hero"><div className="request-title"><button className="back-button">‹</button><div><span className="section-kicker">성수중학교 · 2026-0812-01</span><h2>AI 창의융합 체험 수업</h2><p>8월 12일 (수) 10:00–12:00 · 서울 성동구</p></div></div><div className="request-deadline"><span>응답 마감까지</span><strong>6시간 18분</strong><small>오늘 18:00 마감</small></div></section>
     <section className="role-requirements"><article><div><RoleBadge role="주강사" /><strong>1명 모집</strong></div><b>300,000원</b><span>후보 3명 확보</span></article><article><div><RoleBadge role="보조강사" /><strong>2명 모집</strong></div><b>1인당 150,000원</b><span>후보 2명 확보</span></article><article className="progress-card"><div><span>전체 응답</span><b>8 / 12명</b></div><div className="progress-track"><i style={{ width: "67%" }} /></div><small>미응답 4명 · 최근 알림 어제 16:00</small></article></section>
-    <section className="panel response-board"><div className="board-head"><div className="filter-tabs">{["전체", "가능", "조건부", "불가능", "미응답"].map(f => <button className={statusFilter === f ? "active" : ""} onClick={() => setStatusFilter(f)} key={f}>{f}{f === "미응답" ? " 4" : ""}</button>)}</div><div className="board-actions">{selected.length > 0 && <button className="button secondary" onClick={sendReminder}>선택 {selected.length}명 재알림</button>}<div className="search compact"><span>⌕</span><input aria-label="강사 검색" placeholder="강사 검색" value={query} onChange={event => setQuery(event.target.value)} /></div></div></div>
-      <div className="candidate-table"><div className="candidate-head"><span><input type="checkbox" aria-label="전체 선택" checked={filtered.length > 0 && filtered.every(c => selected.includes(c.name))} onChange={() => setSelected(filtered.every(c => selected.includes(c.name)) ? [] : filtered.map(c => c.name))} /></span><span>강사</span><span>모집 역할</span><span>응답 상태</span><span>조건·충돌</span><span>배정 후보</span></div>{filtered.map(c => <div className="candidate-row" key={c.name}><span><input type="checkbox" aria-label={`${c.name} 선택`} checked={selected.includes(c.name)} onChange={() => toggleSelected(c.name)} /></span><span className="person"><b>{c.initials}</b><span>{c.name}<small>{c.subject} · {c.region}</small></span></span><span><RoleBadge role={c.role} /></span><span><StatusBadge tone={c.status === "가능" ? "green" : c.status === "조건부" ? "amber" : c.status === "불가능" ? "red" : "gray"}>{c.status}</StatusBadge><small className="cell-note">{c.time}</small></span><span>{c.conflict ? <span className="conflict">! 확정 일정과 30분 겹침</span> : c.condition ? <span className="condition-text">“{c.condition}”</span> : <span className="muted">특이사항 없음</span>}</span><span>{c.status === "가능" || c.status === "조건부" ? <button className={`assign-toggle ${assigned.includes(c.name) ? "selected" : ""}`} onClick={() => toggleAssign(c.name)}>{assigned.includes(c.name) ? "✓ 선택됨" : "후보 선택"}</button> : <span className="muted">—</span>}</span></div>)}{filtered.length === 0 && <div className="empty-state">검색 조건에 맞는 강사가 없습니다.</div>}</div>
+    <section className="panel response-board"><div className="board-head"><div className="filter-tabs">{["전체", "가능", "조건부", "불가능", "미응답"].map(f => <button className={statusFilter === f ? "active" : ""} onClick={() => setStatusFilter(f)} key={f}>{f}{f === "미응답" ? " 4" : ""}</button>)}</div><div className="board-actions"><div className="search compact"><span>⌕</span><input aria-label="강사 검색" placeholder="강사 검색" value={query} onChange={event => setQuery(event.target.value)} /></div></div></div>
+      <div className="candidate-table"><div className="candidate-head"><span><input type="checkbox" aria-label="배정 가능 후보 전체 선택" disabled={assignable.length === 0} checked={assignable.length > 0 && assignable.every(c => assigned.includes(c.name))} onChange={toggleAllAssignable} /></span><span>강사</span><span>모집 역할</span><span>응답 상태</span><span>조건·충돌</span><span>배정 후보</span></div>{filtered.map(c => { const canAssign = c.status === "가능" || c.status === "조건부"; const isAssigned = assigned.includes(c.name); return <div className="candidate-row" key={c.name}><span><input type="checkbox" aria-label={`${c.name} 배정 후보 선택`} disabled={!canAssign} checked={canAssign && isAssigned} onChange={() => toggleAssign(c.name)} /></span><span className="person"><b>{c.initials}</b><span>{c.name}<small>{c.subject} · {c.region}</small></span></span><span><RoleBadge role={c.role} /></span><span><StatusBadge tone={c.status === "가능" ? "green" : c.status === "조건부" ? "amber" : c.status === "불가능" ? "red" : "gray"}>{c.status}</StatusBadge><small className="cell-note">{c.time}</small></span><span>{c.conflict ? <span className="conflict">! 확정 일정과 30분 겹침</span> : c.condition ? <span className="condition-text">“{c.condition}”</span> : <span className="muted">특이사항 없음</span>}</span><span>{canAssign ? <button className={`assign-toggle ${isAssigned ? "selected" : ""}`} aria-pressed={isAssigned} onClick={() => toggleAssign(c.name)}>{isAssigned ? "✓ 선택됨" : "후보 선택"}</button> : <span className="muted">—</span>}</span></div>; })}{filtered.length === 0 && <div className="empty-state">검색 조건에 맞는 강사가 없습니다.</div>}</div>
     </section>
     <section className="assignment-bar"><div><span>현재 배정 후보</span><div className="selected-people">{assigned.map((name, i) => <b key={name}>{name}<small>{i === 0 ? "주강사" : "보조강사"}</small></b>)}</div></div><p><span>주강사 <b>1/1</b></span><span>보조강사 <b>{Math.max(0, assigned.length - 1)}/2</b></span></p><button className="button primary" disabled={assigned.length < 3 || confirmed} onClick={confirmAssignment}>{confirmed ? "✓ 배정 완료" : "최종 배정 확인"}</button></section>
   </div>;
