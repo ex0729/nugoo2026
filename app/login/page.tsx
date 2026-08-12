@@ -34,7 +34,7 @@ export default function LoginPage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "admin_login" }),
     }).catch(() => undefined);
-    window.location.assign("/");
+    window.location.assign("/operations");
   }
 
   return (

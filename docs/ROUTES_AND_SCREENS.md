@@ -1,15 +1,19 @@
 # 화면과 경로
 
-## 현재 프로토타입
+## 현재 서비스 라우팅
 
-- `/`: 관리자 앱과 강사 모바일 미리보기를 전환하는 단일 인터랙티브 프로토타입
+- `/`: 운영센터와 강사 모두를 대상으로 하는 공개 랜딩. 활성 세션에는 역할별 센터 이동 버튼을 표시한다.
+- `/start`: 익명 사용자의 운영센터·강사센터 선택 화면. 활성 세션은 역할별 대시보드로 즉시 이동한다.
+- `/operations`: 최고관리자·운영관리자 전용 운영 대시보드
+- `/login`: 운영센터 로그인
+- `/instructor/login`, `/instructor/signup`: 강사 로그인·회원가입
 - 관리자 수업 화면은 실제 Supabase 수업의 `classId`를 기준으로 상세 → 강사 모집 → 응답 현황 → 최종 배정 단계를 연결한다.
 - `/instructor/dashboard`: 실제 모집 요청을 역할별로 확인하고 가능·조건부 가능·불가능으로 응답한다.
 
 ## 상용 라우팅 목표
 
 - `/login`, `/signup`, `/pending`
-- `/admin`: 관리자 홈
+- `/operations`: 현재 통합 관리자 홈·수업·배정·일정·강사·승인·알림 화면
 - `/admin/classes`, `/admin/classes/new`, `/admin/classes/:id`
 - `/admin/classes/:id/recipients`, `/responses`, `/assignment`
 - `/admin/schedule`, `/admin/instructors`, `/admin/instructors/:id`

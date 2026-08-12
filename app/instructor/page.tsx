@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function InstructorHomePage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/instructor/login");
-  if (profile.role !== "instructor") redirect("/");
+  if (profile.role !== "instructor") redirect("/operations");
   if (profile.status === "active") redirect("/instructor/dashboard");
   const suspended = profile.status === "suspended";
 

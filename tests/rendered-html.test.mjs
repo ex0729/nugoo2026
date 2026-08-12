@@ -13,8 +13,23 @@ async function render(path = "/") {
   );
 }
 
-test("protects the operations dashboard behind authentication", async () => {
+test("server-renders the public landing and role selection", async () => {
   const response = await render();
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /수업 요청부터/);
+  assert.match(html, /운영센터와 강사를 하나로 연결/);
+  assert.match(html, /무료로 시작하기/);
+
+  const start = await render("/start");
+  assert.equal(start.status, 200);
+  const startHtml = await start.text();
+  assert.match(startHtml, /운영센터 로그인/);
+  assert.match(startHtml, /강사 로그인/);
+});
+
+test("protects the operations dashboard behind authentication", async () => {
+  const response = await render("/operations");
   assert.equal(response.status, 307);
   assert.equal(response.headers.get("location"), "/login");
 });
@@ -136,14 +151,17 @@ test("stores internal notifications and supports web push reminders", async () =
 });
 
 test("ships project metadata and a bespoke social card", async () => {
-  const [layout, page, packageJson] = await Promise.all([
+  const [layout, page, operations, packageJson] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/operations/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
-  assert.match(layout, /강사 배정 운영 플랫폼/);
+  assert.match(layout, /수업 요청부터 배정까지/);
   assert.match(layout, /\/og\.png/);
-  assert.match(page, /ClassFlowApp/);
+  assert.match(page, /landing-hero/);
+  assert.match(page, /운영센터로 이동/);
+  assert.match(operations, /ClassFlowApp/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await access(new URL("../public/og.png", import.meta.url));
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
