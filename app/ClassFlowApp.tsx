@@ -362,7 +362,7 @@ function ClassWorkspace({ classItem, initialTab, onBack, onUpdated }: { classIte
   </div>;
 }
 
-function RequestsScreen() {
+function RequestsScreen({ onBack }: { onBack: () => void }) {
   const [statusFilter, setStatusFilter] = useState("전체");
   const [query, setQuery] = useState("");
   const [assigned, setAssigned] = useState<string[]>(["김민준"]);
@@ -390,7 +390,7 @@ function RequestsScreen() {
   };
   return <div className="request-layout">
     {confirmed && <section className="notice-banner"><span>✓</span><div><b>강사 배정이 완료됐어요</b><p>선택한 주강사 1명과 보조강사 2명에게 확정 알림을 보냈습니다.</p></div></section>}
-    <section className="panel request-hero"><div className="request-title"><button className="back-button">‹</button><div><span className="section-kicker">성수중학교 · 2026-0812-01</span><h2>AI 창의융합 체험 수업</h2><p>8월 12일 (수) 10:00–12:00 · 서울 성동구</p></div></div><div className="request-deadline"><span>응답 마감까지</span><strong>6시간 18분</strong><small>오늘 18:00 마감</small></div></section>
+    <section className="panel request-hero"><div className="request-title"><button className="back-button" type="button" aria-label="운영센터 홈으로 돌아가기" onClick={onBack}>‹</button><div><span className="section-kicker">성수중학교 · 2026-0812-01</span><h2>AI 창의융합 체험 수업</h2><p>8월 12일 (수) 10:00–12:00 · 서울 성동구</p></div></div><div className="request-deadline"><span>응답 마감까지</span><strong>6시간 18분</strong><small>오늘 18:00 마감</small></div></section>
     <section className="role-requirements"><article><div><RoleBadge role="주강사" /><strong>1명 모집</strong></div><b>300,000원</b><span>후보 3명 확보</span></article><article><div><RoleBadge role="보조강사" /><strong>2명 모집</strong></div><b>1인당 150,000원</b><span>후보 2명 확보</span></article><article className="progress-card"><div><span>전체 응답</span><b>8 / 12명</b></div><div className="progress-track"><i style={{ width: "67%" }} /></div><small>미응답 4명 · 최근 알림 어제 16:00</small></article></section>
     <section className="panel response-board"><div className="board-head"><div className="filter-tabs">{["전체", "가능", "조건부", "불가능", "미응답"].map(f => <button className={statusFilter === f ? "active" : ""} onClick={() => setStatusFilter(f)} key={f}>{f}{f === "미응답" ? " 4" : ""}</button>)}</div><div className="board-actions"><div className="search compact"><span>⌕</span><input aria-label="강사 검색" placeholder="강사 검색" value={query} onChange={event => setQuery(event.target.value)} /></div></div></div>
       <div className="candidate-table"><div className="candidate-head"><span><input type="checkbox" aria-label="배정 가능 후보 전체 선택" disabled={assignable.length === 0} checked={assignable.length > 0 && assignable.every(c => assigned.includes(c.name))} onChange={toggleAllAssignable} /></span><span>강사</span><span>모집 역할</span><span>응답 상태</span><span>조건·충돌</span><span>배정 후보</span></div>{filtered.map(c => { const canAssign = c.status === "가능" || c.status === "조건부"; const isAssigned = assigned.includes(c.name); return <div className="candidate-row" key={c.name}><span><input type="checkbox" aria-label={`${c.name} 배정 후보 선택`} disabled={!canAssign} checked={canAssign && isAssigned} onChange={() => toggleAssign(c.name)} /></span><span className="person"><b>{c.initials}</b><span>{c.name}<small>{c.subject} · {c.region}</small></span></span><span><RoleBadge role={c.role} /></span><span><StatusBadge tone={c.status === "가능" ? "green" : c.status === "조건부" ? "amber" : c.status === "불가능" ? "red" : "gray"}>{c.status}</StatusBadge><small className="cell-note">{c.time}</small></span><span>{c.conflict ? <span className="conflict">! 확정 일정과 30분 겹침</span> : c.condition ? <span className="condition-text">“{c.condition}”</span> : <span className="muted">특이사항 없음</span>}</span><span>{canAssign ? <button className={`assign-toggle ${isAssigned ? "selected" : ""}`} aria-pressed={isAssigned} onClick={() => toggleAssign(c.name)}>{isAssigned ? "✓ 선택됨" : "후보 선택"}</button> : <span className="muted">—</span>}</span></div>; })}{filtered.length === 0 && <div className="empty-state">검색 조건에 맞는 강사가 없습니다.</div>}</div>
@@ -677,7 +677,7 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
     if (screen === "home") return <HomeScreen go={setScreen} adminName={currentAdmin.name} />;
     if (screen === "classes" && selectedClass) return <ClassWorkspace key={selectedClass.id} classItem={selectedClass} initialTab={workspaceTab} onBack={() => setSelectedClassId(null)} onUpdated={updateStoredClass} />;
     if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} openClass={openClass} onDeleted={classId => setStoredClasses(current => current.filter(item => item.id !== classId))} classItems={storedClasses} loading={classesLoading} error={classesError} />;
-    if (screen === "requests") return <RequestsScreen />;
+    if (screen === "requests") return <RequestsScreen onBack={() => setScreen("home")} />;
     if (screen === "schedule") return <ScheduleScreen classItems={storedClasses} />;
     if (screen === "instructors") return <InstructorsScreen onPendingResolved={() => setPendingMemberCount(count => Math.max(0, count - 1))} />;
     if (screen === "approvals") return <ApprovalsScreen currentRole={currentAdmin.role} onPendingCountChange={setPendingMemberCount} />;

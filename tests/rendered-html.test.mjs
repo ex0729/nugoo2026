@@ -154,6 +154,12 @@ test("keeps assignment checkboxes and candidate buttons on one selection state",
   assert.match(app, /onClick=\{\(\) => toggleAssign\(c\.name\)\}/);
 });
 
+test("returns from an assignment request to the operations home", async () => {
+  const app = await readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8");
+  assert.match(app, /aria-label="운영센터 홈으로 돌아가기" onClick=\{onBack\}/);
+  assert.match(app, /<RequestsScreen onBack=\{\(\) => setScreen\("home"\)\}/);
+});
+
 test("switches the schedule between real weekly and monthly calendars", async () => {
   const app = await readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8");
   assert.match(app, /setView\("month"\)/);
