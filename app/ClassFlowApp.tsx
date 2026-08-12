@@ -1,5 +1,5 @@
 "use client";
-/* eslint-disable jsx-a11y/aria-role, jsx-a11y/no-autofocus, react-hooks/refs -- `role` is a domain prop; form refs preserve values across the two unmounted steps. */
+/* eslint-disable jsx-a11y/aria-role, jsx-a11y/no-autofocus, jsx-a11y/no-noninteractive-element-to-interactive-role, react-hooks/refs -- domain role labels and keyboard-enabled operational rows are intentional; form refs preserve values across steps. */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -37,13 +37,47 @@ type StoredClass = {
   id: string;
   title: string;
   institution: string;
+  contact: string | null;
   class_date: string;
   start_time: string;
   end_time: string;
   address: string;
+  target_group: string;
+  grade: string;
+  participant_count: number;
+  description: string;
+  lead_count: number;
   assistant_count: number;
+  lead_fee: number;
+  assistant_fee: number;
+  fee_notes: string;
   response_deadline: string;
-  status: "draft" | "recruiting" | "assignment_needed" | "assigned" | "cancelled";
+  status: ClassStatus;
+  operational_status: ClassStatus;
+  target_count: number;
+  lead_response_count: number;
+  assistant_response_count: number;
+  conditional_count: number;
+  instructor_names: string[];
+  recruitment_targets: RecruitmentTarget[];
+  assignments: Assignment[];
+};
+
+type ClassStatus = "registered" | "recruiting" | "reviewing" | "assignment_needed" | "assigned" | "completed" | "cancelled";
+type ResponseStatus = "pending" | "available" | "conditional" | "unavailable";
+type InstructorProfile = { user_id: string; full_name: string; email: string; status: string };
+type RecruitmentResponse = { id: string; target_id: string; role: "lead" | "assistant"; status: ResponseStatus; condition: string | null; responded_at: string | null };
+type RecruitmentTarget = { id: string; class_id: string; instructor_id: string; requested_role: "lead" | "assistant" | "both"; instructor: InstructorProfile | null; responses: RecruitmentResponse[] };
+type Assignment = { id: string; instructor_id: string; role: "lead" | "assistant"; fee_snapshot: number; instructor: InstructorProfile | null };
+
+const classStatusMeta: Record<ClassStatus, { label: string; tone: string; priority: number; description: string }> = {
+  assignment_needed: { label: "배정 필요", tone: "red", priority: 0, description: "필요 인원을 확정해 주세요" },
+  reviewing: { label: "응답 확인", tone: "amber", priority: 1, description: "조건부 응답을 확인해 주세요" },
+  recruiting: { label: "모집 중", tone: "blue", priority: 2, description: "강사 응답을 기다리는 중" },
+  registered: { label: "등록됨", tone: "gray", priority: 3, description: "모집 대상을 선택해 주세요" },
+  assigned: { label: "배정 완료", tone: "green", priority: 4, description: "강사 배정이 완료됨" },
+  completed: { label: "수업 완료", tone: "gray", priority: 5, description: "추가 작업 없음" },
+  cancelled: { label: "취소", tone: "gray", priority: 6, description: "취소된 수업" },
 };
 
 const demoClasses: ClassListItem[] = [
@@ -53,33 +87,8 @@ const demoClasses: ClassListItem[] = [
   { id: 4, title: "디지털 리터러시 특강", institution: "마포청소년센터", date: "8월 18일 (화)", time: "14:00–16:00", place: "서울 마포구", status: "요청 전", tone: "gray", replies: "0/8", lead: "미확보", assistant: "미확보", deadline: "8월 14일", urgent: false },
 ];
 
-function storedClassToListItem(item: StoredClass): ClassListItem {
-  const classDate = new Date(`${item.class_date}T00:00:00`);
-  const deadline = new Date(item.response_deadline);
-  const statusMap = {
-    draft: ["요청 전", "gray"],
-    recruiting: ["응답 대기", "blue"],
-    assignment_needed: ["배정 필요", "amber"],
-    assigned: ["배정 완료", "green"],
-    cancelled: ["취소", "red"],
-  } as const;
-  const [status, tone] = statusMap[item.status];
-  return {
-    id: item.id,
-    title: item.title,
-    institution: item.institution,
-    date: new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(classDate),
-    time: `${item.start_time.slice(0, 5)}–${item.end_time.slice(0, 5)}`,
-    place: item.address,
-    status,
-    tone,
-    replies: "0/0",
-    lead: "1명 필요",
-    assistant: item.assistant_count > 0 ? `${item.assistant_count}명 필요` : "모집 없음",
-    deadline: new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(deadline),
-    urgent: false,
-  };
-}
+const won = (value: number) => `${new Intl.NumberFormat("ko-KR").format(value)}원`;
+const classDateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" }).format(new Date(`${value}T00:00:00`));
 
 const candidates = [
   { name: "김민준", initials: "김", role: "주강사", status: "가능", time: "오늘 10:24", subject: "AI · 코딩", region: "서울 전역", conflict: false, condition: "" },
@@ -182,17 +191,87 @@ function HomeScreen({ go, adminName }: { go: (s: Screen) => void; adminName: str
   </div>;
 }
 
-function ClassesScreen({ onCreate, goRequests, classItems, loading }: { onCreate: () => void; goRequests: () => void; classItems: ClassListItem[]; loading: boolean }) {
+type PeriodFilter = "all" | "today" | "week" | "month" | "custom";
+
+function ClassesScreen({ onCreate, openClass, classItems, loading, error }: { onCreate: () => void; openClass: (item: StoredClass, tab?: "detail" | "recruitment" | "responses" | "assignment") => void; classItems: StoredClass[]; loading: boolean; error: string }) {
   const [filter, setFilter] = useState("전체");
+  const [period, setPeriod] = useState<PeriodFilter>("all");
   const [query, setQuery] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
-  const visible = classItems.filter(c => {
-    const matchesStatus = filter === "전체" || c.status === filter;
-    const matchesQuery = !normalizedQuery || [c.title, c.institution, c.place].some(value => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
-    return matchesStatus && matchesQuery;
-  });
-  return <div className="screen-stack"><section className="toolbar"><div className="search"><span aria-hidden="true">⌕</span><input aria-label="수업 검색" placeholder="기관명 또는 수업명 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{["전체", "응답 대기", "배정 필요", "배정 완료"].map(f => <button className={filter === f ? "active" : ""} onClick={() => setFilter(f)} key={f}>{f}</button>)}</div><button className="button primary" onClick={onCreate}>＋ 새 수업</button></section>
-    <section className="panel class-table-panel"><div className="list-summary"><p>검색 결과 <b>{visible.length}</b></p><div><button className="view-toggle active">목록</button><button className="view-toggle">주간 일정</button></div></div><div className="class-table"><div className="class-table-head"><span>수업 정보</span><span>일정·장소</span><span>모집 현황</span><span>응답 마감</span><span>상태</span><span /></div>{loading && <div className="empty-state">등록된 수업을 불러오는 중입니다.</div>}{!loading && visible.map(item => <div className="class-row" key={item.id}><span><b>{item.title}</b><small>{item.institution}</small></span><span><b>{item.date} · {item.time}</b><small>{item.place}</small></span><span><small>주강사 {item.lead}</small><small>보조강사 {item.assistant}</small></span><span className={item.deadline.includes("지남") ? "text-red" : ""}>{item.deadline}</span><span><StatusBadge tone={item.tone}>{item.status}</StatusBadge></span><span><button className="row-action" onClick={goRequests}>{item.status === "응답 대기" || item.status === "배정 필요" ? "현황 보기" : "상세"}</button></span></div>)}{!loading && visible.length === 0 && <div className="empty-state">검색 조건에 맞는 수업이 없습니다.</div>}</div></section>
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfWeek = new Date(today); endOfWeek.setDate(today.getDate() + 6);
+  const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const filterStatus: Record<string, ClassStatus[]> = { "모집 중": ["recruiting", "reviewing"], "배정 필요": ["assignment_needed"], "배정 완료": ["assigned"], "완료": ["completed"], "취소": ["cancelled"] };
+  const visible = classItems.filter(item => {
+    const matchesStatus = filter === "전체" || filterStatus[filter]?.includes(item.operational_status);
+    const matchesQuery = !normalizedQuery || [item.title, item.institution, item.address, ...item.instructor_names].some(value => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
+    const date = new Date(`${item.class_date}T00:00:00`);
+    const matchesPeriod = period === "all" || period === "today" && date.getTime() === today.getTime() || period === "week" && date >= today && date <= endOfWeek || period === "month" && date >= today && date <= endOfMonth || period === "custom" && (!from || item.class_date >= from) && (!to || item.class_date <= to);
+    return matchesStatus && matchesQuery && matchesPeriod;
+  }).sort((a, b) => classStatusMeta[a.operational_status].priority - classStatusMeta[b.operational_status].priority || a.class_date.localeCompare(b.class_date));
+
+  return <div className="screen-stack class-console">
+    <section className="class-console-heading"><div><span className="section-kicker">CLASS OPERATIONS</span><h2>수업 운영 콘솔</h2><p>지금 처리가 필요한 수업부터 확인하고 모집과 배정을 이어가세요.</p></div><button className="button primary" onClick={onCreate}>＋ 새 수업 등록</button></section>
+    <section className="panel class-console-filters"><div className="search"><span aria-hidden="true">⌕</span><input aria-label="수업 검색" placeholder="기관명 / 수업명 / 강사명 검색" value={query} onChange={event => setQuery(event.target.value)} /></div><div className="filter-tabs">{["전체", "모집 중", "배정 필요", "배정 완료", "완료", "취소"].map(value => <button className={filter === value ? "active" : ""} onClick={() => setFilter(value)} key={value}>{value}</button>)}</div><div className="period-filter"><span>기간</span>{([['all','전체'],['today','오늘'],['week','이번 주'],['month','이번 달'],['custom','직접 선택']] as const).map(([value,label]) => <button className={period === value ? "active" : ""} onClick={() => setPeriod(value)} key={value}>{label}</button>)}</div>{period === "custom" && <div className="custom-period"><label>시작일<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><span>–</span><label>종료일<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label></div>}</section>
+    <section className="panel class-operations-list"><header><p><b>{visible.length}개 수업</b><span>처리 필요 상태 → 가까운 수업일 순</span></p></header>{loading && <div className="empty-state">실제 수업 정보를 불러오는 중입니다.</div>}{error && <div className="empty-state error-state">{error}</div>}{!loading && !error && visible.map(item => { const meta = classStatusMeta[item.operational_status]; return <article className={`class-operation-row status-${meta.tone}`} key={item.id} role="button" tabIndex={0} onClick={() => openClass(item)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openClass(item); } }}><div className="class-operation-main"><div className="class-operation-status"><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge><small>{meta.description}</small></div><h3>{item.institution} · {item.title}</h3><p>{classDateLabel(item.class_date)} {item.start_time.slice(0,5)}~{item.end_time.slice(0,5)}<span>·</span>{item.address}</p><div className="class-operation-fees"><b>주강사 {item.lead_count}명 · {won(item.lead_fee)}</b><b>보조강사 {item.assistant_count}명 · {item.assistant_count ? `1인당 ${won(item.assistant_fee)}` : "모집 없음"}</b></div></div><div className="class-operation-progress"><span>모집 현황</span><strong>주강사 {item.lead_response_count}명 응답 · 보조강사 {item.assistant_response_count}명 응답</strong><small>모집 대상 {item.target_count}명 · 응답 마감 {new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.response_deadline))}</small></div><div className="class-operation-actions"><button className="button secondary" onClick={event => { event.stopPropagation(); openClass(item, item.target_count ? "responses" : "recruitment"); }}>{item.target_count ? "응답 현황" : "강사 모집"}</button><button className="button primary" disabled={item.operational_status !== "assignment_needed" && item.operational_status !== "reviewing"} onClick={event => { event.stopPropagation(); openClass(item, "assignment"); }}>배정하기</button></div></article>; })}{!loading && !error && visible.length === 0 && <div className="empty-state"><b>조건에 맞는 수업이 없습니다.</b><p>새 수업을 등록하거나 검색·필터 조건을 바꿔보세요.</p></div>}</section>
+  </div>;
+}
+
+type ClassWorkspaceTab = "detail" | "recruitment" | "responses" | "assignment";
+type RecruitableInstructor = { user_id: string; full_name: string; email: string };
+
+function ClassWorkspace({ classItem, initialTab, onBack, onUpdated }: { classItem: StoredClass; initialTab: ClassWorkspaceTab; onBack: () => void; onUpdated: (item: StoredClass) => void }) {
+  const [tab, setTab] = useState<ClassWorkspaceTab>(initialTab);
+  const [instructors, setInstructors] = useState<RecruitableInstructor[]>([]);
+  const [selected, setSelected] = useState<Record<string, "lead" | "assistant" | "both">>(Object.fromEntries(classItem.recruitment_targets.map(target => [target.instructor_id, target.requested_role])));
+  const [leadId, setLeadId] = useState(classItem.assignments.find(item => item.role === "lead")?.instructor_id ?? "");
+  const [assistantIds, setAssistantIds] = useState<string[]>(classItem.assignments.filter(item => item.role === "assistant").map(item => item.instructor_id));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/members", { cache: "no-store" }).then(response => response.ok ? response.json() : Promise.reject()).then((data: { members: Array<RecruitableInstructor & { role: string; status: string }> }) => setInstructors(data.members.filter(item => item.role === "instructor" && item.status === "active"))).catch(() => setError("모집 가능한 강사를 불러오지 못했습니다."));
+  }, []);
+
+  const availableLead = classItem.recruitment_targets.filter(target => target.responses.some(response => response.role === "lead" && ["available", "conditional"].includes(response.status)));
+  const availableAssistants = classItem.recruitment_targets.filter(target => target.responses.some(response => response.role === "assistant" && ["available", "conditional"].includes(response.status)));
+  const responseLabel: Record<ResponseStatus, string> = { pending: "미응답", available: "가능", conditional: "조건부", unavailable: "불가능" };
+
+  async function saveRecruitment() {
+    const targets = Object.entries(selected).map(([instructorId, requestedRole]) => ({ instructorId, requestedRole }));
+    if (targets.length === 0) { setError("최소 한 명의 모집 대상 강사를 선택해 주세요."); return; }
+    setSaving(true); setError(""); setMessage("");
+    const response = await fetch(`/api/admin/classes/${classItem.id}/recruitment`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ targets }) });
+    const data = await response.json() as { class?: StoredClass; error?: string };
+    setSaving(false);
+    if (!response.ok || !data.class) { setError(data.error === "responses_already_exist" ? "이미 응답이 시작되어 모집 대상을 바꿀 수 없습니다." : "강사 모집을 시작하지 못했습니다."); return; }
+    onUpdated(data.class); setMessage("선택한 강사를 모집 대상으로 저장했습니다."); setTab("responses");
+  }
+
+  async function finalizeAssignment() {
+    if (!leadId) { setError("주강사 1명을 선택해 주세요."); return; }
+    if (assistantIds.length !== classItem.assistant_count) { setError(`보조강사 ${classItem.assistant_count}명을 선택해 주세요.`); return; }
+    setSaving(true); setError(""); setMessage("");
+    const response = await fetch(`/api/admin/classes/${classItem.id}/assignments`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ leadInstructorId: leadId, assistantInstructorIds: assistantIds }) });
+    const data = await response.json() as { class?: StoredClass; error?: string };
+    setSaving(false);
+    if (!response.ok || !data.class) { setError("배정을 확정하지 못했습니다. 역할별 응답과 필요 인원을 확인해 주세요."); return; }
+    onUpdated(data.class); setMessage("주강사와 보조강사 배정을 확정했습니다.");
+  }
+
+  return <div className="screen-stack class-workspace">
+    <button className="text-button workspace-back" onClick={onBack}>← 수업 목록으로</button>
+    <section className="panel class-workspace-hero"><div><span className="section-kicker">{classItem.institution} · {classItem.id.slice(0,8).toUpperCase()}</span><h2>{classItem.title}</h2><p>{classDateLabel(classItem.class_date)} {classItem.start_time.slice(0,5)}~{classItem.end_time.slice(0,5)} · {classItem.address}</p></div><div><StatusBadge tone={classStatusMeta[classItem.operational_status].tone}>{classStatusMeta[classItem.operational_status].label}</StatusBadge><small>{classStatusMeta[classItem.operational_status].description}</small></div></section>
+    <nav className="panel class-workspace-tabs" aria-label="수업 운영 단계">{([['detail','수업 상세'],['recruitment','강사 모집'],['responses','응답 현황'],['assignment','최종 배정']] as const).map(([value,label], index) => <button className={tab === value ? "active" : ""} onClick={() => setTab(value)} key={value}><span>{index + 1}</span>{label}</button>)}</nav>
+    {message && <div className="notice-banner"><span>✓</span><div><b>{message}</b></div></div>}{error && <div className="notice-banner error-banner"><span>!</span><div><b>{error}</b></div></div>}
+    {tab === "detail" && <div className="class-detail-grid"><section className="panel class-detail-card"><header><h3>수업 정보</h3></header><dl><div><dt>기관·담당자</dt><dd>{classItem.institution}<small>{classItem.contact || "담당자 정보 없음"}</small></dd></div><div><dt>일정</dt><dd>{classDateLabel(classItem.class_date)} {classItem.start_time.slice(0,5)}~{classItem.end_time.slice(0,5)}</dd></div><div><dt>장소</dt><dd>{classItem.address}</dd></div><div><dt>대상</dt><dd>{classItem.target_group} · {classItem.grade} · {classItem.participant_count}명</dd></div><div className="wide"><dt>수업 내용</dt><dd>{classItem.description || "등록된 설명이 없습니다."}</dd></div></dl></section><section className="panel class-detail-card"><header><h3>강사·수업료</h3></header><div className="detail-role-fee"><article><RoleBadge role="주강사" /><b>{classItem.lead_count}명</b><strong>{won(classItem.lead_fee)}</strong></article><article><RoleBadge role="보조강사" /><b>{classItem.assistant_count}명</b><strong>{classItem.assistant_count ? `1인당 ${won(classItem.assistant_fee)}` : "모집 없음"}</strong></article></div><p>{classItem.fee_notes || "추가 수업료 안내 없음"}</p><button className="button primary" onClick={() => setTab("recruitment")}>{classItem.target_count ? "모집 대상 확인" : "강사 모집 시작"} →</button></section></div>}
+    {tab === "recruitment" && <section className="panel recruitment-picker"><header><div><h3>모집 대상 강사 선택</h3><p>강사마다 주강사·보조강사·두 역할 모두 중 하나를 지정합니다.</p></div><button className="button primary" disabled={saving} onClick={saveRecruitment}>{saving ? "저장 중…" : `선택 ${Object.keys(selected).length}명 모집 시작`}</button></header><div className="recruitment-list">{instructors.map(instructor => { const role = selected[instructor.user_id]; return <article key={instructor.user_id}><label><input type="checkbox" checked={Boolean(role)} onChange={() => setSelected(current => { const next = { ...current }; if (next[instructor.user_id]) delete next[instructor.user_id]; else next[instructor.user_id] = "both"; return next; })} /><span className="avatar">{instructor.full_name[0]}</span><span><b>{instructor.full_name}</b><small>{instructor.email}</small></span></label><select aria-label={`${instructor.full_name} 모집 역할`} disabled={!role} value={role ?? "both"} onChange={event => setSelected(current => ({ ...current, [instructor.user_id]: event.target.value as "lead" | "assistant" | "both" }))}><option value="lead">주강사</option><option value="assistant">보조강사</option><option value="both">두 역할 모두</option></select></article>; })}{instructors.length === 0 && <div className="empty-state">현재 모집 가능한 활성 강사가 없습니다.</div>}</div></section>}
+    {tab === "responses" && <section className="panel response-operations"><header><div><h3>역할별 응답 현황</h3><p>주강사 {classItem.lead_response_count}명 · 보조강사 {classItem.assistant_response_count}명 응답</p></div><button className="button primary" disabled={availableLead.length < 1 || availableAssistants.length < classItem.assistant_count} onClick={() => setTab("assignment")}>배정 후보 선택 →</button></header><div className="response-operations-table"><div className="response-operations-head"><span>강사</span><span>모집 역할</span><span>주강사 응답</span><span>보조강사 응답</span><span>조건</span></div>{classItem.recruitment_targets.map(target => { const lead = target.responses.find(response => response.role === "lead"); const assistant = target.responses.find(response => response.role === "assistant"); const conditional = target.responses.find(response => response.condition); return <div className="response-operations-row" key={target.id}><span><b>{target.instructor?.full_name ?? "강사"}</b><small>{target.instructor?.email}</small></span><span><RoleBadge role={target.requested_role === "lead" ? "주강사" : target.requested_role === "assistant" ? "보조강사" : "두 역할"} /></span><span>{lead ? <StatusBadge tone={lead.status === "available" ? "green" : lead.status === "conditional" ? "amber" : lead.status === "unavailable" ? "red" : "gray"}>{responseLabel[lead.status]}</StatusBadge> : "—"}</span><span>{assistant ? <StatusBadge tone={assistant.status === "available" ? "green" : assistant.status === "conditional" ? "amber" : assistant.status === "unavailable" ? "red" : "gray"}>{responseLabel[assistant.status]}</StatusBadge> : "—"}</span><span>{conditional?.condition || "—"}</span></div>; })}{classItem.recruitment_targets.length === 0 && <div className="empty-state">아직 모집 대상이 없습니다. 강사 모집 단계에서 대상을 선택해 주세요.</div>}</div></section>}
+    {tab === "assignment" && <section className="panel assignment-picker"><header><div><h3>최종 배정</h3><p>가능 또는 조건부 가능으로 응답한 강사만 배정할 수 있습니다.</p></div><button className="button primary" disabled={saving || !leadId || assistantIds.length !== classItem.assistant_count} onClick={finalizeAssignment}>{saving ? "확정 중…" : "최종 배정 확정"}</button></header><div className="assignment-role-grid"><section><h4><RoleBadge role="주강사" /> 1명 선택 · {won(classItem.lead_fee)}</h4>{availableLead.map(target => <label className={leadId === target.instructor_id ? "selected" : ""} key={target.id}><input type="radio" name="lead" checked={leadId === target.instructor_id} onChange={() => setLeadId(target.instructor_id)} /><span>{target.instructor?.full_name}<small>{target.responses.find(response => response.role === "lead")?.condition || "가능 응답"}</small></span></label>)}{availableLead.length === 0 && <p>배정 가능한 주강사 응답이 없습니다.</p>}</section><section><h4><RoleBadge role="보조강사" /> {classItem.assistant_count}명 선택 · 1인당 {won(classItem.assistant_fee)}</h4>{availableAssistants.map(target => <label className={assistantIds.includes(target.instructor_id) ? "selected" : ""} key={target.id}><input type="checkbox" checked={assistantIds.includes(target.instructor_id)} onChange={() => setAssistantIds(current => current.includes(target.instructor_id) ? current.filter(id => id !== target.instructor_id) : current.length < classItem.assistant_count ? [...current, target.instructor_id] : current)} /><span>{target.instructor?.full_name}<small>{target.responses.find(response => response.role === "assistant")?.condition || "가능 응답"}</small></span></label>)}{classItem.assistant_count === 0 && <p>이 수업은 보조강사를 모집하지 않습니다.</p>}{classItem.assistant_count > 0 && availableAssistants.length === 0 && <p>배정 가능한 보조강사 응답이 없습니다.</p>}</section></div></section>}
   </div>;
 }
 
@@ -364,7 +443,10 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
   const [showForm, setShowForm] = useState(false);
   const [instructorMode, setInstructorMode] = useState(false);
   const [storedClasses, setStoredClasses] = useState<StoredClass[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<ClassWorkspaceTab>("detail");
   const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState("");
   useEffect(() => {
     fetch("/api/admin/classes")
       .then(async response => {
@@ -372,18 +454,22 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
         return response.json() as Promise<{ classes: StoredClass[] }>;
       })
       .then(result => setStoredClasses(result.classes))
+      .catch(() => setClassesError("수업 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."))
       .finally(() => setClassesLoading(false));
   }, []);
-  const classItems = useMemo(() => [...storedClasses.map(storedClassToListItem), ...demoClasses], [storedClasses]);
+  const selectedClass = storedClasses.find(item => item.id === selectedClassId) ?? null;
+  const updateStoredClass = (item: StoredClass) => setStoredClasses(current => current.map(value => value.id === item.id ? item : value));
+  const openClass = (item: StoredClass, tab: ClassWorkspaceTab = "detail") => { setSelectedClassId(item.id); setWorkspaceTab(tab); setScreen("classes"); };
   const content = useMemo(() => {
     if (screen === "home") return <HomeScreen go={setScreen} adminName={currentAdmin.name} />;
-    if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} goRequests={() => setScreen("requests")} classItems={classItems} loading={classesLoading} />;
+    if (screen === "classes" && selectedClass) return <ClassWorkspace key={selectedClass.id} classItem={selectedClass} initialTab={workspaceTab} onBack={() => setSelectedClassId(null)} onUpdated={updateStoredClass} />;
+    if (screen === "classes") return <ClassesScreen onCreate={() => setShowForm(true)} openClass={openClass} classItems={storedClasses} loading={classesLoading} error={classesError} />;
     if (screen === "requests") return <RequestsScreen />;
     if (screen === "schedule") return <ScheduleScreen />;
     if (screen === "instructors") return <InstructorsScreen />;
     if (screen === "approvals") return <ApprovalsScreen currentRole={currentAdmin.role} />;
     return <NotificationsScreen />;
-  }, [classItems, classesLoading, currentAdmin.name, currentAdmin.role, screen]);
+  }, [classesError, classesLoading, currentAdmin.name, currentAdmin.role, screen, selectedClass, storedClasses, workspaceTab]);
   if (instructorMode) return <InstructorMobile onBack={() => setInstructorMode(false)} />;
-  return <div className="app-shell"><Sidebar screen={screen} setScreen={setScreen} canManageMembers /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} onCreated={item => { setStoredClasses(current => [item, ...current]); setScreen("classes"); }} />}</div>;
+  return <div className="app-shell"><Sidebar screen={screen} setScreen={value => { setSelectedClassId(null); setScreen(value); }} canManageMembers={currentAdmin.role === "super_admin" || currentAdmin.role === "service_admin"} /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} onCreated={item => { setStoredClasses(current => [item, ...current]); setSelectedClassId(item.id); setWorkspaceTab("detail"); setScreen("classes"); }} />}</div>;
 }

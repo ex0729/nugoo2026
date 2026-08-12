@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ADMIN_ROLES, getCurrentProfile } from "../../../../lib/auth";
+import { loadClassOperations } from "../../../../lib/class-operations";
 import { createClient } from "../../../../lib/supabase/server";
 
 type ClassInput = {
@@ -34,13 +35,11 @@ const clean = (value: unknown) => typeof value === "string" ? value.trim() : "";
 export async function GET() {
   if (!await authorize()) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("classes")
-    .select("id,title,institution,class_date,start_time,end_time,address,assistant_count,response_deadline,status,created_at")
-    .order("created_at", { ascending: false });
-
-  if (error) return NextResponse.json({ error: "classes_unavailable" }, { status: 500 });
-  return NextResponse.json({ classes: data });
+  try {
+    return NextResponse.json({ classes: await loadClassOperations(supabase) });
+  } catch {
+    return NextResponse.json({ error: "classes_unavailable" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -94,14 +93,19 @@ export async function POST(request: Request) {
     assistant_fee: assistantFee,
     fee_notes: clean(body?.feeNotes),
     response_deadline: responseDeadline.toISOString(),
-    status: "draft",
+    status: "registered",
     created_by: actor.user_id,
-  }).select("id,title,institution,class_date,start_time,end_time,address,assistant_count,response_deadline,status,created_at").single();
+  }).select("id").single();
 
   if (error) return NextResponse.json({ error: "class_create_failed" }, { status: 400 });
   await supabase.rpc("record_admin_activity", {
     activity_action: "class_created",
-    activity_details: { class_id: data.id, class_name: data.title },
+    activity_details: { class_id: data.id, class_name: title },
   });
-  return NextResponse.json({ class: data }, { status: 201 });
+  try {
+    const [createdClass] = await loadClassOperations(supabase, data.id);
+    return NextResponse.json({ class: createdClass }, { status: 201 });
+  } catch {
+    return NextResponse.json({ error: "class_read_failed" }, { status: 500 });
+  }
 }

@@ -50,15 +50,16 @@ test("server-renders the instructor signup", async () => {
 });
 
 test("routes approved instructors into a protected dashboard", async () => {
-  const [entry, dashboard, signout] = await Promise.all([
+  const [entry, dashboard, dashboardClient, signout] = await Promise.all([
     readFile(new URL("../app/instructor/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/instructor/dashboard/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/instructor/dashboard/InstructorDashboardClient.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/auth/signout/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(entry, /profile\.status === "active"\) redirect\("\/instructor\/dashboard"\)/);
   assert.match(dashboard, /profile\.status !== "active"\) redirect\("\/instructor"\)/);
-  assert.match(dashboard, /새 수업 요청/);
-  assert.match(dashboard, /다가오는 확정 일정/);
+  assert.match(dashboardClient, /새 수업 요청/);
+  assert.match(dashboardClient, /api\/instructor\/requests/);
   assert.match(signout, /requestedNext === "\/instructor\/login"/);
 });
 
@@ -92,6 +93,25 @@ test("persists newly registered classes and uses a reliable settings navigation"
   assert.match(api, /\.from\("classes"\)\.insert/);
   assert.match(migration, /alter table public\.classes enable row level security/);
   assert.match(migration, /classes_insert_active_admin/);
+});
+
+test("connects each persisted class to recruitment, responses, and final assignment", async () => {
+  const [app, classApi, recruitmentApi, assignmentApi, migration] = await Promise.all([
+    readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/classes/[id]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/classes/[id]/recruitment/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/classes/[id]/assignments/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/20260812025334_class_assignment_workflow.sql", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(app, /storedClasses\.map\(storedClassToListItem\).*demoClasses/);
+  assert.match(app, /수업 운영 콘솔/);
+  assert.match(app, /openClass\(item/);
+  assert.match(classApi, /loadClassOperations/);
+  assert.match(recruitmentApi, /set_class_recruitment/);
+  assert.match(assignmentApi, /finalize_class_assignment/);
+  assert.match(migration, /class_recruitment_targets/);
+  assert.match(migration, /class_recruitment_responses/);
+  assert.match(migration, /class_assignments/);
 });
 
 test("ships project metadata and a bespoke social card", async () => {
