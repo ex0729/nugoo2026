@@ -26,7 +26,7 @@ export default function InstructorAuthShell({ mode, title, description, children
             <li><span>✓</span> 확정 수업과 진행 상태 관리</li>
           </ul>
         </div>
-        <small>누구나코딩교육 강사 운영 서비스</small>
+        <small>NGN-X 강사 운영 서비스</small>
       </section>
 
       <section className="instructor-auth-main">
