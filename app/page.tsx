@@ -1,4 +1,4 @@
-import Link from "next/link";
+/* eslint-disable @next/next/no-html-link-for-pages -- Sites needs native document navigation because client-side Link transitions do not complete reliably. */
 import { getCurrentProfile } from "../lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +20,8 @@ export default async function LandingPage() {
 
   return <main className="landing-page">
     <header className="landing-header">
-      <Link className="landing-brand" href="/" aria-label="클래스플로우 홈"><span className="landing-brand-mark">C</span><span><b>클래스플로우</b><small>by NGN-X</small></span></Link>
-      <nav aria-label="랜딩페이지 메뉴"><a href="#benefits">서비스 소개</a><a href="#how-it-works">이용 방법</a><Link className="landing-header-cta" href={portal.href}>{portal.label}<span>→</span></Link></nav>
+      <a className="landing-brand" href="/" aria-label="클래스플로우 홈"><span className="landing-brand-mark">C</span><span><b>클래스플로우</b><small>by NGN-X</small></span></a>
+      <nav aria-label="랜딩페이지 메뉴"><a href="#benefits">서비스 소개</a><a href="#how-it-works">이용 방법</a><a className="landing-header-cta" href={portal.href}>{portal.label}<span>→</span></a></nav>
     </header>
 
     <section className="landing-hero">
@@ -29,7 +29,7 @@ export default async function LandingPage() {
         <span className="landing-eyebrow"><i /> 운영센터와 강사를 하나로 연결하는 배정 플랫폼</span>
         <h1>수업 요청부터<br /><em>배정까지, 한곳에서.</em></h1>
         <p>흩어진 연락과 응답을 한 화면에 모으고,<br className="desktop-break" /> 역할·수업료·확정 일정까지 빠르게 연결하세요.</p>
-        <div className="landing-actions"><Link className="landing-primary" href={portal.href}>{profile ? portal.label : "무료로 시작하기"}<span>→</span></Link><a className="landing-secondary" href="#benefits">어떻게 달라지나요?</a></div>
+        <div className="landing-actions"><a className="landing-primary" href={portal.href}>{profile ? portal.label : "무료로 시작하기"}<span>→</span></a><a className="landing-secondary" href="#benefits">어떻게 달라지나요?</a></div>
         <div className="landing-proof"><span><b>10초</b> 강사 응답</span><span><b>한눈에</b> 응답 현황</span><span><b>즉시</b> 배정 결과</span></div>
       </div>
 
@@ -62,7 +62,7 @@ export default async function LandingPage() {
 
     <section className="landing-flow" id="how-it-works"><div><span className="landing-section-kicker">SIMPLE FLOW</span><h2>등록하고, 응답받고, 확정하세요.</h2></div><ol><li><span>1</span><b>수업 등록</b><p>일정·역할·수업료 입력</p></li><li><span>2</span><b>강사 요청</b><p>내부 알림과 무료 웹 푸시</p></li><li><span>3</span><b>응답 확인</b><p>역할별 후보와 조건 비교</p></li><li><span>4</span><b>최종 배정</b><p>결과 안내와 일정 자동 등록</p></li></ol></section>
 
-    <section className="landing-final-cta"><div><span>NGN-X · CLASSFLOW</span><h2>강사 배정,<br />이제 연락보다 흐름으로 관리하세요.</h2><p>운영센터와 강사 모두에게 더 명확한 수업 운영을 시작합니다.</p></div><Link href={portal.href}>{profile ? portal.label : "클래스플로우 시작하기"}<span>→</span></Link></section>
-    <footer className="landing-footer"><Link className="landing-brand" href="/"><span className="landing-brand-mark">C</span><span><b>클래스플로우</b><small>by NGN-X</small></span></Link><p>수업 요청·응답·배정을 한곳에서 관리하는 강사 운영 플랫폼</p><small>© 2026 NGN-X. All rights reserved.</small></footer>
+    <section className="landing-final-cta"><div><span>NGN-X · CLASSFLOW</span><h2>강사 배정,<br />이제 연락보다 흐름으로 관리하세요.</h2><p>운영센터와 강사 모두에게 더 명확한 수업 운영을 시작합니다.</p></div><a href={portal.href}>{profile ? portal.label : "클래스플로우 시작하기"}<span>→</span></a></section>
+    <footer className="landing-footer"><a className="landing-brand" href="/"><span className="landing-brand-mark">C</span><span><b>클래스플로우</b><small>by NGN-X</small></span></a><p>수업 요청·응답·배정을 한곳에서 관리하는 강사 운영 플랫폼</p><small>© 2026 NGN-X. All rights reserved.</small></footer>
   </main>;
 }

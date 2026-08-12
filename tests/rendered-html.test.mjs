@@ -26,6 +26,15 @@ test("server-renders the public landing and role selection", async () => {
   const startHtml = await start.text();
   assert.match(startHtml, /운영센터 로그인/);
   assert.match(startHtml, /강사 로그인/);
+
+  const [landingSource, startSource] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/start/page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(landingSource, /next\/link/);
+  assert.doesNotMatch(startSource, /next\/link/);
+  assert.match(landingSource, /<a className="landing-primary" href=\{portal\.href\}>/);
+  assert.match(startSource, /<a className="portal-option operations" href="\/login">/);
 });
 
 test("protects the operations dashboard behind authentication", async () => {
