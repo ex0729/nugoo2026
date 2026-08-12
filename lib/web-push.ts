@@ -40,14 +40,14 @@ export async function deliverClassNotifications(
   supabase: SupabaseClient,
   classId: string,
   userIds: string[],
-  type: "class_request" | "assignment_confirmed",
+  type: "class_request" | "assignment_confirmed" | "assignment_result" | "class_changed" | "class_cancelled",
 ) {
   if (!userIds.length) return { sent: 0, failed: 0, unavailable: 0 };
   const [{ data: notificationData }, { data: subscriptionData }] = await Promise.all([
-    supabase.from("internal_notifications").select("user_id,title,body,action_url").eq("class_id", classId).eq("type", type).in("user_id", userIds),
+    supabase.from("internal_notifications").select("user_id,title,body,action_url,created_at").eq("class_id", classId).eq("type", type).in("user_id", userIds).order("created_at", { ascending: false }),
     supabase.rpc("get_push_subscriptions_for_users", { target_user_ids: userIds }),
   ]);
-  const notifications = (notificationData ?? []) as Array<{ user_id: string; title: string; body: string; action_url: string }>;
+  const notifications = (notificationData ?? []).filter((notification, index, all) => all.findIndex(item => item.user_id === notification.user_id) === index) as Array<{ user_id: string; title: string; body: string; action_url: string; created_at: string }>;
   const subscriptions = (subscriptionData ?? []) as StoredPushSubscription[];
   const results = await Promise.all(notifications.map(notification => sendWebPush(
     subscriptions.filter(subscription => subscription.user_id === notification.user_id),

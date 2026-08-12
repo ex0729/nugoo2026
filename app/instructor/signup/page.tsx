@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { createClient } from "../../../lib/supabase/client";
 import InstructorAuthShell from "../InstructorAuthShell";
+import { passwordPolicyError } from "../../../lib/password-policy";
 
 export default function InstructorSignupPage() {
   const [fullName, setFullName] = useState("");
@@ -17,6 +18,8 @@ export default function InstructorSignupPage() {
     event.preventDefault();
     setMessage("");
     setErrorMessage("");
+    const policyError = passwordPolicyError(password);
+    if (policyError) { setErrorMessage(policyError); return; }
     if (password !== passwordConfirm) {
       setErrorMessage("비밀번호가 서로 일치하지 않습니다.");
       return;
@@ -52,8 +55,8 @@ export default function InstructorSignupPage() {
         <label>이름<input type="text" value={fullName} onChange={event => setFullName(event.target.value)} autoComplete="name" placeholder="실명을 입력하세요" minLength={2} required /></label>
         <label>이메일<input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" placeholder="name@example.com" required /></label>
         <div className="instructor-auth-form-grid">
-          <label>비밀번호<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" placeholder="8자 이상" minLength={8} required /></label>
-          <label>비밀번호 확인<input type="password" value={passwordConfirm} onChange={event => setPasswordConfirm(event.target.value)} autoComplete="new-password" placeholder="한 번 더 입력" minLength={8} required /></label>
+          <label>비밀번호<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" placeholder="12자 이상 · 3종 조합" minLength={12} required /></label>
+          <label>비밀번호 확인<input type="password" value={passwordConfirm} onChange={event => setPasswordConfirm(event.target.value)} autoComplete="new-password" placeholder="한 번 더 입력" minLength={12} required /></label>
         </div>
         <label className="instructor-auth-consent"><input type="checkbox" required /><span>개인정보 수집 및 서비스 이용에 동의합니다.</span></label>
         <button className="button primary" disabled={signingUp}>{signingUp ? "가입 처리 중…" : "강사로 가입하기"}</button>

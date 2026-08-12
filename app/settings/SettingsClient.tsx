@@ -3,6 +3,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
+import { passwordPolicyError } from "../../lib/password-policy";
 
 type AdminIdentity = { userId: string; name: string; email: string; role: "super_admin" | "service_admin" };
 type Member = { user_id: string; email: string; full_name: string; role: "instructor" | "company_member" | "service_admin" | "super_admin"; status: "pending" | "active" | "suspended"; created_at: string };
@@ -108,7 +109,8 @@ export default function SettingsClient({ currentAdmin }: { currentAdmin: AdminId
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setMessage("");
-    if (password.length < 12) { setError("비밀번호는 12자 이상으로 입력해 주세요."); return; }
+    const policyError = passwordPolicyError(password);
+    if (policyError) { setError(policyError); return; }
     if (password !== passwordConfirm) { setError("새 비밀번호가 서로 일치하지 않습니다."); return; }
     const supabase = createClient();
     const { error: updateError } = await supabase.auth.updateUser({ password });

@@ -28,7 +28,7 @@ type ClassRow = {
 
 type TargetRow = { id: string; class_id: string; instructor_id: string; requested_role: "lead" | "assistant" | "both"; invited_at: string; last_reminded_at: string | null };
 type ResponseRow = { id: string; target_id: string; role: "lead" | "assistant"; status: "pending" | "available" | "conditional" | "unavailable"; condition: string | null; responded_at: string | null };
-type AssignmentRow = { id: string; class_id: string; instructor_id: string; role: "lead" | "assistant"; fee_snapshot: number; assigned_at: string };
+type AssignmentRow = { id: string; class_id: string; instructor_id: string; role: "lead" | "assistant"; fee_snapshot: number; assigned_at: string; acknowledged_at: string | null };
 type ProfileRow = { user_id: string; full_name: string; email: string; status: string };
 
 export type ClassOperationsItem = ClassRow & {
@@ -73,7 +73,7 @@ export async function loadClassOperations(supabase: SupabaseClient, classId?: st
   if (responseResult.error) throw responseResult.error;
   const responses = (responseResult.data ?? []) as ResponseRow[];
 
-  const { data: assignmentData, error: assignmentError } = await supabase.from("class_assignments").select("id,class_id,instructor_id,role,fee_snapshot,assigned_at").in("class_id", classIds);
+  const { data: assignmentData, error: assignmentError } = await supabase.from("class_assignments").select("id,class_id,instructor_id,role,fee_snapshot,assigned_at,acknowledged_at").in("class_id", classIds);
   if (assignmentError) throw assignmentError;
   const assignments = (assignmentData ?? []) as AssignmentRow[];
 

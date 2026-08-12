@@ -15,14 +15,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "invalid_assignment" }, { status: 400 });
   }
   const supabase = await createClient();
-  const { error } = await supabase.rpc("finalize_class_assignment", {
+  const [existingClass] = await loadClassOperations(supabase, id);
+  if (!existingClass) return NextResponse.json({ error: "class_not_found" }, { status: 404 });
+  const rpcName = existingClass.status === "assigned" ? "replace_class_assignment" : "finalize_class_assignment";
+  const { error } = await supabase.rpc(rpcName, {
     target_class_id: id,
     lead_instructor_id: body.leadInstructorId,
     assistant_instructor_ids: body.assistantInstructorIds,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  const recipients = [body.leadInstructorId, ...body.assistantInstructorIds];
-  const push = await deliverClassNotifications(supabase, id, recipients, "assignment_confirmed");
   const [classItem] = await loadClassOperations(supabase, id);
-  return NextResponse.json({ class: classItem, delivery: { internal: recipients.length, push } });
+  if (!classItem) return NextResponse.json({ error: "class_not_found" }, { status: 404 });
+  const recipients = [body.leadInstructorId, ...body.assistantInstructorIds];
+  const notSelected = classItem.recruitment_targets.map(target => target.instructor_id).filter(userId => !recipients.includes(userId));
+  const [confirmedPush, resultPush] = await Promise.all([
+    deliverClassNotifications(supabase, id, recipients, "assignment_confirmed"),
+    deliverClassNotifications(supabase, id, notSelected, "assignment_result"),
+  ]);
+  return NextResponse.json({ class: classItem, delivery: { internal: classItem.recruitment_targets.length, push: { sent: confirmedPush.sent + resultPush.sent, failed: confirmedPush.failed + resultPush.failed, unavailable: confirmedPush.unavailable + resultPush.unavailable } } });
 }

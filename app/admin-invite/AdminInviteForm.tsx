@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { createClient } from "../../lib/supabase/client";
+import { passwordPolicyError } from "../../lib/password-policy";
 
 export default function AdminInviteForm({ email, token }: { email: string; token: string }) {
   const [fullName, setFullName] = useState("");
@@ -15,7 +16,8 @@ export default function AdminInviteForm({ email, token }: { email: string; token
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setMessage("");
     if (!email || !token) { setError("유효하지 않은 관리자 초대 링크입니다."); return; }
-    if (password.length < 12) { setError("비밀번호는 12자 이상으로 입력해 주세요."); return; }
+    const policyError = passwordPolicyError(password);
+    if (policyError) { setError(policyError); return; }
     if (password !== passwordConfirm) { setError("비밀번호가 서로 일치하지 않습니다."); return; }
     setSubmitting(true);
     const supabase = createClient();
