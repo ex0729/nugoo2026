@@ -51,7 +51,10 @@ export default function LoginPage() {
             <input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" required />
           </label>
           <label>
-            비밀번호
+            <span className="auth-label-row">
+              <span>비밀번호</span>
+              <Link href="/forgot-password?source=admin">비밀번호를 잊으셨나요?</Link>
+            </span>
             <span className="password-input-wrap">
               <input
                 type={showPassword ? "text" : "password"}

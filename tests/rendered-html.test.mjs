@@ -64,6 +64,40 @@ test("server-renders the instructor login", async () => {
   assert.match(html, /아직 강사 계정이 없으신가요/);
 });
 
+test("ships one secure password recovery flow for administrators and instructors", async () => {
+  const [adminLogin, instructorLogin, forgotForm, callback, updatePage, updateForm, recoveryHelper] = await Promise.all([
+    readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/instructor/login/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/forgot-password/ForgotPasswordForm.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/update-password/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/update-password/UpdatePasswordForm.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/password-recovery.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(adminLogin, /\/forgot-password\?source=admin/);
+  assert.match(instructorLogin, /\/forgot-password\?source=instructor/);
+  assert.match(forgotForm, /resetPasswordForEmail\(normalizedEmail/);
+  assert.match(forgotForm, /new URL\("\/auth\/callback", window\.location\.origin\)/);
+  assert.match(forgotForm, /입력하신 이메일이 가입되어 있다면/);
+  assert.doesNotMatch(forgotForm, /console\.(?:log|error)/);
+  assert.match(callback, /exchangeCodeForSession\(code\)/);
+  assert.match(callback, /isPasswordRecovery/);
+  assert.match(updatePage, /hasRecoveryMarker && !error && Boolean\(data\.user\)/);
+  assert.match(updateForm, /updateUser\(\{ password \}\)/);
+  assert.match(updateForm, /signOut\(\{ scope: "global" \}\)/);
+  assert.match(updateForm, /passwordPolicyError\(password\)/);
+  assert.match(recoveryHelper, /new Set\(\["\/", "\/instructor", "\/update-password"\]\)/);
+
+  const forgot = await render("/forgot-password?source=admin");
+  assert.equal(forgot.status, 200);
+  assert.match(await forgot.text(), /비밀번호 찾기/);
+
+  const update = await render("/update-password");
+  assert.equal(update.status, 200);
+  assert.match(await update.text(), /재설정 링크가 만료되었거나 올바르지 않습니다/);
+});
+
 test("server-renders the instructor signup", async () => {
   const response = await render("/instructor/signup");
   assert.equal(response.status, 200);
@@ -125,6 +159,20 @@ test("persists newly registered classes and uses a reliable settings navigation"
   assert.match(api, /\.from\("classes"\)\.insert/);
   assert.match(migration, /alter table public\.classes enable row level security/);
   assert.match(migration, /classes_insert_active_admin/);
+});
+
+test("starts new classes empty and supports target and multi-grade selection", async () => {
+  const app = await readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8");
+  assert.match(app, /const classTargetOptions = \["중학생", "초등학생", "고등학생", "성인", "유아"\]/);
+  assert.match(app, /const classGradeOptions = \["1학년", "2학년", "3학년", "4학년", "5학년", "6학년", "기타"\]/);
+  assert.match(app, /title: "", institution: "", contact: ""/);
+  assert.match(app, /address: "", targetGroup: ""/);
+  assert.match(app, /grade: "", participantCount: 0, description: ""/);
+  assert.match(app, /function GradeSelector/);
+  assert.match(app, /type="checkbox" checked=\{value\.includes\(grade\)\}/);
+  assert.match(app, /draft\.current\.grade = next\.join\(", "\)/);
+  assert.doesNotMatch(app, /defaultValue="300,000"/);
+  assert.doesNotMatch(app, /defaultValue="150,000"/);
 });
 
 test("connects each persisted class to recruitment, responses, and final assignment", async () => {

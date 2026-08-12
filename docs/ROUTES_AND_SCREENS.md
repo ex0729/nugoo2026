@@ -7,6 +7,9 @@
 - `/operations`: 최고관리자·운영관리자 전용 운영 대시보드
 - `/login`: 운영센터 로그인
 - `/instructor/login`, `/instructor/signup`: 강사 로그인·회원가입
+- `/forgot-password`: 운영센터·강사 공용 비밀번호 재설정 메일 요청
+- `/auth/callback`: PKCE 인증 코드 교환. 허용된 내부 경로만 이동하며 복구 흐름은 `/update-password`로 연결한다.
+- `/update-password`: 유효한 복구 세션에서만 새 비밀번호 저장
 - 관리자 수업 화면은 실제 Supabase 수업의 `classId`를 기준으로 상세 → 강사 모집 → 응답 현황 → 최종 배정 단계를 연결한다.
 - `/instructor/dashboard`: 실제 모집 요청을 역할별로 확인하고 가능·조건부 가능·불가능으로 응답한다.
 
