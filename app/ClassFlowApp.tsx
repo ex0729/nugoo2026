@@ -67,7 +67,7 @@ type ClassStatus = "registered" | "recruiting" | "reviewing" | "assignment_neede
 type ResponseStatus = "pending" | "available" | "conditional" | "unavailable";
 type InstructorProfile = { user_id: string; full_name: string; email: string; status: string };
 type RecruitmentResponse = { id: string; target_id: string; role: "lead" | "assistant"; status: ResponseStatus; condition: string | null; responded_at: string | null };
-type RecruitmentTarget = { id: string; class_id: string; instructor_id: string; requested_role: "lead" | "assistant" | "both"; instructor: InstructorProfile | null; responses: RecruitmentResponse[] };
+type RecruitmentTarget = { id: string; class_id: string; instructor_id: string; requested_role: "lead" | "assistant" | "both"; last_reminded_at: string | null; instructor: InstructorProfile | null; responses: RecruitmentResponse[] };
 type Assignment = { id: string; instructor_id: string; role: "lead" | "assistant"; fee_snapshot: number; instructor: InstructorProfile | null };
 
 const classStatusMeta: Record<ClassStatus, { label: string; tone: string; priority: number; description: string }> = {
@@ -223,6 +223,62 @@ function ClassesScreen({ onCreate, openClass, classItems, loading, error }: { on
 type ClassWorkspaceTab = "detail" | "recruitment" | "responses" | "assignment";
 type RecruitableInstructor = { user_id: string; full_name: string; email: string };
 
+function targetResponseStatus(target: RecruitmentTarget): ResponseStatus {
+  const statuses = target.responses.map(response => response.status);
+  if (statuses.includes("conditional")) return "conditional";
+  if (statuses.includes("available")) return "available";
+  if (statuses.length > 0 && statuses.every(status => status === "unavailable")) return "unavailable";
+  return "pending";
+}
+
+function ResponseOperations({ classItem, onAssignment }: { classItem: StoredClass; onAssignment: () => void }) {
+  const [filter, setFilter] = useState<"all" | ResponseStatus>("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
+  const availableLead = classItem.recruitment_targets.filter(target => target.responses.some(response => response.role === "lead" && ["available", "conditional"].includes(response.status))).length;
+  const availableAssistant = classItem.recruitment_targets.filter(target => target.responses.some(response => response.role === "assistant" && ["available", "conditional"].includes(response.status))).length;
+  const counts = classItem.recruitment_targets.reduce((result, target) => ({ ...result, [targetResponseStatus(target)]: result[targetResponseStatus(target)] + 1 }), { pending: 0, available: 0, conditional: 0, unavailable: 0 });
+  const visible = classItem.recruitment_targets.filter(target => filter === "all" || targetResponseStatus(target) === filter);
+  const responseLabel: Record<ResponseStatus, string> = { pending: "미응답", available: "가능", conditional: "조건부 가능", unavailable: "불가능" };
+
+  const toggle = (targetId: string) => setSelectedIds(current => current.includes(targetId) ? current.filter(id => id !== targetId) : [...current, targetId]);
+
+  async function sendReminder() {
+    if (!selectedIds.length) return;
+    setSending(true); setError(""); setFeedback("");
+    const response = await fetch(`/api/admin/classes/${classItem.id}/reminders`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ targetIds: selectedIds, requestKey: crypto.randomUUID() }),
+    });
+    const data = await response.json() as { internal?: number; push?: { sent: number; failed: number; unavailable: number }; error?: string };
+    setSending(false);
+    if (!response.ok) { setError(data.error === "pending_target_required" ? "미응답 역할이 남아 있는 강사만 재알림할 수 있습니다." : "재알림을 저장하지 못했습니다."); return; }
+    setFeedback(`내부 알림 ${data.internal ?? selectedIds.length}건을 저장했고 웹 푸시 ${data.push?.sent ?? 0}건을 전송했습니다.${data.push?.unavailable ? ` 푸시 미등록 ${data.push.unavailable}명은 내부 알림으로 확인할 수 있습니다.` : ""}`);
+    setSelectedIds([]);
+  }
+
+  async function shareToKakao() {
+    const text = [`[NGN-X 강사 모집]`, `${classItem.institution} · ${classItem.title}`, `${classDateLabel(classItem.class_date)} ${classItem.start_time.slice(0,5)}~${classItem.end_time.slice(0,5)}`, `주강사 ${classItem.lead_count}명 · ${won(classItem.lead_fee)} / 보조강사 ${classItem.assistant_count}명 · 1인당 ${won(classItem.assistant_fee)}`, `응답 마감 ${new Date(classItem.response_deadline).toLocaleString("ko-KR")}`, `${location.origin}/instructor/dashboard`].join("\n");
+    try {
+      if (navigator.share) await navigator.share({ title: `${classItem.title} 강사 모집`, text });
+      else { await navigator.clipboard.writeText(text); setFeedback("모집 안내를 복사했습니다. 카카오톡 대화방에 붙여 넣어 주세요."); }
+    } catch (shareError) {
+      if ((shareError as Error).name !== "AbortError") setError("공유 내용을 준비하지 못했습니다.");
+    }
+  }
+
+  return <section className="panel response-operations">
+    <header><div><h3>실시간 응답 현황</h3><p>요청 {classItem.target_count}명 · 가능 {counts.available} · 조건부 {counts.conditional} · 불가능 {counts.unavailable} · 미응답 {counts.pending}</p></div><div className="response-header-actions"><button className="button secondary" onClick={shareToKakao}>카카오톡으로 공유</button><button className="button primary" disabled={availableLead < 1 || availableAssistant < classItem.assistant_count} onClick={onAssignment}>배정 후보 선택 →</button></div></header>
+    <div className="response-readiness"><article className={availableLead >= 1 ? "ready" : "shortage"}><span>주강사 1명 필요</span><b>가능 후보 {availableLead}명 확보 {availableLead >= 1 ? "✓" : "필요"}</b></article><article className={availableAssistant >= classItem.assistant_count ? "ready" : "shortage"}><span>보조강사 {classItem.assistant_count}명 필요</span><b>가능 후보 {availableAssistant}명 확보 {availableAssistant >= classItem.assistant_count ? "✓" : "필요"}</b></article></div>
+    {feedback && <div className="response-feedback success">{feedback}</div>}{error && <div className="response-feedback error">{error}</div>}
+    <div className="response-toolbar"><div className="filter-tabs">{([['all','전체'],['available','가능'],['conditional','조건부'],['unavailable','불가능'],['pending','미응답']] as const).map(([value,label]) => <button className={filter === value ? "active" : ""} onClick={() => setFilter(value)} key={value}>{label} {value === "all" ? classItem.target_count : counts[value]}</button>)}</div><button className="button secondary" disabled={!selectedIds.length || sending} onClick={sendReminder}>{sending ? "전송 중…" : `선택 ${selectedIds.length}명 재알림`}</button></div>
+    <div className="response-operations-table"><div className="response-operations-head real"><span>선택</span><span>강사</span><span>모집 역할</span><span>응답</span><span>조건</span><span>응답 시각</span></div>{visible.map(target => { const pending = target.responses.some(response => response.status === "pending"); const status = targetResponseStatus(target); const latest = target.responses.map(response => response.responded_at).filter((value): value is string => Boolean(value)).sort().at(-1); const roleResponses = target.responses.map(response => `${response.role === "lead" ? "주" : "보"} ${responseLabel[response.status]}`).join(" · "); const conditional = target.responses.find(response => response.condition); return <div className="response-operations-row real" key={target.id}><span><input aria-label={`${target.instructor?.full_name ?? "강사"} 재알림 선택`} type="checkbox" disabled={!pending} checked={selectedIds.includes(target.id)} onChange={() => toggle(target.id)} /></span><span><b>{target.instructor?.full_name ?? "강사"}</b><small>{target.instructor?.email}</small></span><span><RoleBadge role={target.requested_role === "lead" ? "주강사" : target.requested_role === "assistant" ? "보조강사" : "두 역할"} /></span><span><StatusBadge tone={status === "available" ? "green" : status === "conditional" ? "amber" : status === "unavailable" ? "red" : "gray"}>{roleResponses || "미응답"}</StatusBadge></span><span>{conditional?.condition || "—"}</span><span>{latest ? new Date(latest).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}{target.last_reminded_at && <small>재알림 {new Date(target.last_reminded_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small>}</span></div>; })}{classItem.recruitment_targets.length === 0 && <div className="empty-state">아직 모집 대상이 없습니다. 강사 모집 단계에서 대상을 선택해 주세요.</div>}</div>
+  </section>;
+}
+
 function ClassWorkspace({ classItem, initialTab, onBack, onUpdated }: { classItem: StoredClass; initialTab: ClassWorkspaceTab; onBack: () => void; onUpdated: (item: StoredClass) => void }) {
   const [tab, setTab] = useState<ClassWorkspaceTab>(initialTab);
   const [instructors, setInstructors] = useState<RecruitableInstructor[]>([]);
@@ -239,7 +295,6 @@ function ClassWorkspace({ classItem, initialTab, onBack, onUpdated }: { classIte
 
   const availableLead = classItem.recruitment_targets.filter(target => target.responses.some(response => response.role === "lead" && ["available", "conditional"].includes(response.status)));
   const availableAssistants = classItem.recruitment_targets.filter(target => target.responses.some(response => response.role === "assistant" && ["available", "conditional"].includes(response.status)));
-  const responseLabel: Record<ResponseStatus, string> = { pending: "미응답", available: "가능", conditional: "조건부", unavailable: "불가능" };
 
   async function saveRecruitment() {
     const targets = Object.entries(selected).map(([instructorId, requestedRole]) => ({ instructorId, requestedRole }));
@@ -270,7 +325,7 @@ function ClassWorkspace({ classItem, initialTab, onBack, onUpdated }: { classIte
     {message && <div className="notice-banner"><span>✓</span><div><b>{message}</b></div></div>}{error && <div className="notice-banner error-banner"><span>!</span><div><b>{error}</b></div></div>}
     {tab === "detail" && <div className="class-detail-grid"><section className="panel class-detail-card"><header><h3>수업 정보</h3></header><dl><div><dt>기관·담당자</dt><dd>{classItem.institution}<small>{classItem.contact || "담당자 정보 없음"}</small></dd></div><div><dt>일정</dt><dd>{classDateLabel(classItem.class_date)} {classItem.start_time.slice(0,5)}~{classItem.end_time.slice(0,5)}</dd></div><div><dt>장소</dt><dd>{classItem.address}</dd></div><div><dt>대상</dt><dd>{classItem.target_group} · {classItem.grade} · {classItem.participant_count}명</dd></div><div className="wide"><dt>수업 내용</dt><dd>{classItem.description || "등록된 설명이 없습니다."}</dd></div></dl></section><section className="panel class-detail-card"><header><h3>강사·수업료</h3></header><div className="detail-role-fee"><article><RoleBadge role="주강사" /><b>{classItem.lead_count}명</b><strong>{won(classItem.lead_fee)}</strong></article><article><RoleBadge role="보조강사" /><b>{classItem.assistant_count}명</b><strong>{classItem.assistant_count ? `1인당 ${won(classItem.assistant_fee)}` : "모집 없음"}</strong></article></div><p>{classItem.fee_notes || "추가 수업료 안내 없음"}</p><button className="button primary" onClick={() => setTab("recruitment")}>{classItem.target_count ? "모집 대상 확인" : "강사 모집 시작"} →</button></section></div>}
     {tab === "recruitment" && <section className="panel recruitment-picker"><header><div><h3>모집 대상 강사 선택</h3><p>강사마다 주강사·보조강사·두 역할 모두 중 하나를 지정합니다.</p></div><button className="button primary" disabled={saving} onClick={saveRecruitment}>{saving ? "저장 중…" : `선택 ${Object.keys(selected).length}명 모집 시작`}</button></header><div className="recruitment-list">{instructors.map(instructor => { const role = selected[instructor.user_id]; return <article key={instructor.user_id}><label><input type="checkbox" checked={Boolean(role)} onChange={() => setSelected(current => { const next = { ...current }; if (next[instructor.user_id]) delete next[instructor.user_id]; else next[instructor.user_id] = "both"; return next; })} /><span className="avatar">{instructor.full_name[0]}</span><span><b>{instructor.full_name}</b><small>{instructor.email}</small></span></label><select aria-label={`${instructor.full_name} 모집 역할`} disabled={!role} value={role ?? "both"} onChange={event => setSelected(current => ({ ...current, [instructor.user_id]: event.target.value as "lead" | "assistant" | "both" }))}><option value="lead">주강사</option><option value="assistant">보조강사</option><option value="both">두 역할 모두</option></select></article>; })}{instructors.length === 0 && <div className="empty-state">현재 모집 가능한 활성 강사가 없습니다.</div>}</div></section>}
-    {tab === "responses" && <section className="panel response-operations"><header><div><h3>역할별 응답 현황</h3><p>주강사 {classItem.lead_response_count}명 · 보조강사 {classItem.assistant_response_count}명 응답</p></div><button className="button primary" disabled={availableLead.length < 1 || availableAssistants.length < classItem.assistant_count} onClick={() => setTab("assignment")}>배정 후보 선택 →</button></header><div className="response-operations-table"><div className="response-operations-head"><span>강사</span><span>모집 역할</span><span>주강사 응답</span><span>보조강사 응답</span><span>조건</span></div>{classItem.recruitment_targets.map(target => { const lead = target.responses.find(response => response.role === "lead"); const assistant = target.responses.find(response => response.role === "assistant"); const conditional = target.responses.find(response => response.condition); return <div className="response-operations-row" key={target.id}><span><b>{target.instructor?.full_name ?? "강사"}</b><small>{target.instructor?.email}</small></span><span><RoleBadge role={target.requested_role === "lead" ? "주강사" : target.requested_role === "assistant" ? "보조강사" : "두 역할"} /></span><span>{lead ? <StatusBadge tone={lead.status === "available" ? "green" : lead.status === "conditional" ? "amber" : lead.status === "unavailable" ? "red" : "gray"}>{responseLabel[lead.status]}</StatusBadge> : "—"}</span><span>{assistant ? <StatusBadge tone={assistant.status === "available" ? "green" : assistant.status === "conditional" ? "amber" : assistant.status === "unavailable" ? "red" : "gray"}>{responseLabel[assistant.status]}</StatusBadge> : "—"}</span><span>{conditional?.condition || "—"}</span></div>; })}{classItem.recruitment_targets.length === 0 && <div className="empty-state">아직 모집 대상이 없습니다. 강사 모집 단계에서 대상을 선택해 주세요.</div>}</div></section>}
+    {tab === "responses" && <ResponseOperations classItem={classItem} onAssignment={() => setTab("assignment")} />}
     {tab === "assignment" && <section className="panel assignment-picker"><header><div><h3>최종 배정</h3><p>가능 또는 조건부 가능으로 응답한 강사만 배정할 수 있습니다.</p></div><button className="button primary" disabled={saving || !leadId || assistantIds.length !== classItem.assistant_count} onClick={finalizeAssignment}>{saving ? "확정 중…" : "최종 배정 확정"}</button></header><div className="assignment-role-grid"><section><h4><RoleBadge role="주강사" /> 1명 선택 · {won(classItem.lead_fee)}</h4>{availableLead.map(target => <label className={leadId === target.instructor_id ? "selected" : ""} key={target.id}><input type="radio" name="lead" checked={leadId === target.instructor_id} onChange={() => setLeadId(target.instructor_id)} /><span>{target.instructor?.full_name}<small>{target.responses.find(response => response.role === "lead")?.condition || "가능 응답"}</small></span></label>)}{availableLead.length === 0 && <p>배정 가능한 주강사 응답이 없습니다.</p>}</section><section><h4><RoleBadge role="보조강사" /> {classItem.assistant_count}명 선택 · 1인당 {won(classItem.assistant_fee)}</h4>{availableAssistants.map(target => <label className={assistantIds.includes(target.instructor_id) ? "selected" : ""} key={target.id}><input type="checkbox" checked={assistantIds.includes(target.instructor_id)} onChange={() => setAssistantIds(current => current.includes(target.instructor_id) ? current.filter(id => id !== target.instructor_id) : current.length < classItem.assistant_count ? [...current, target.instructor_id] : current)} /><span>{target.instructor?.full_name}<small>{target.responses.find(response => response.role === "assistant")?.condition || "가능 응답"}</small></span></label>)}{classItem.assistant_count === 0 && <p>이 수업은 보조강사를 모집하지 않습니다.</p>}{classItem.assistant_count > 0 && availableAssistants.length === 0 && <p>배정 가능한 보조강사 응답이 없습니다.</p>}</section></div></section>}
   </div>;
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ADMIN_ROLES, getCurrentProfile } from "../../../../../../lib/auth";
 import { loadClassOperations } from "../../../../../../lib/class-operations";
+import { deliverClassNotifications } from "../../../../../../lib/web-push";
 import { createClient } from "../../../../../../lib/supabase/server";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -20,6 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     assistant_instructor_ids: body.assistantInstructorIds,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  const recipients = [body.leadInstructorId, ...body.assistantInstructorIds];
+  const push = await deliverClassNotifications(supabase, id, recipients, "assignment_confirmed");
   const [classItem] = await loadClassOperations(supabase, id);
-  return NextResponse.json({ class: classItem });
+  return NextResponse.json({ class: classItem, delivery: { internal: recipients.length, push } });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ADMIN_ROLES, getCurrentProfile } from "../../../../../../lib/auth";
 import { loadClassOperations } from "../../../../../../lib/class-operations";
+import { deliverClassNotifications } from "../../../../../../lib/web-push";
 import { createClient } from "../../../../../../lib/supabase/server";
 
 type TargetInput = { instructorId?: string; requestedRole?: "lead" | "assistant" | "both" };
@@ -28,6 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const code = error.message.includes("responses_already_exist") ? "responses_already_exist" : "recruitment_failed";
     return NextResponse.json({ error: code }, { status: 400 });
   }
+  const push = await deliverClassNotifications(supabase, id, targets.map(target => target.instructorId!), "class_request");
   const [classItem] = await loadClassOperations(supabase, id);
-  return NextResponse.json({ class: classItem });
+  return NextResponse.json({ class: classItem, delivery: { internal: targets.length, push } });
 }
