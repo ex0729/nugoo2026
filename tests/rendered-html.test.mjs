@@ -147,11 +147,12 @@ test("connects each persisted class to recruitment, responses, and final assignm
 });
 
 test("stores internal notifications and supports web push reminders", async () => {
-  const [app, dashboard, reminderApi, notificationApi, pushApi, serviceWorker, migration] = await Promise.all([
+  const [app, dashboard, reminderApi, notificationApi, adminNotificationApi, pushApi, serviceWorker, migration] = await Promise.all([
     readFile(new URL("../app/ClassFlowApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/instructor/dashboard/InstructorDashboardClient.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/admin/classes/[id]/reminders/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/notifications/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/notifications/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/push/subscriptions/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/20260812090000_notification_channels.sql", import.meta.url), "utf8"),
@@ -160,6 +161,10 @@ test("stores internal notifications and supports web push reminders", async () =
   assert.match(app, /카카오톡으로 공유/);
   assert.match(reminderApi, /create_class_reminders/);
   assert.match(notificationApi, /internal_notifications/);
+  assert.match(adminNotificationApi, /internal_notifications/);
+  assert.match(app, /onNotifications=\{\(\) => \{ setSelectedClassId\(null\); setScreen\("notifications"\); \}\}/);
+  assert.match(app, /실제 알림 발송 이력/);
+  assert.doesNotMatch(app, /발송 성공률.*98\.7%/);
   assert.match(pushApi, /web_push_subscriptions/);
   assert.match(dashboard, /무료 웹 푸시 켜기/);
   assert.match(serviceWorker, /showNotification/);

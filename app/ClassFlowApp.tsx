@@ -69,6 +69,7 @@ type InstructorProfile = { user_id: string; full_name: string; email: string; st
 type RecruitmentResponse = { id: string; target_id: string; role: "lead" | "assistant"; status: ResponseStatus; condition: string | null; responded_at: string | null };
 type RecruitmentTarget = { id: string; class_id: string; instructor_id: string; requested_role: "lead" | "assistant" | "both"; last_reminded_at: string | null; instructor: InstructorProfile | null; responses: RecruitmentResponse[] };
 type Assignment = { id: string; instructor_id: string; role: "lead" | "assistant"; fee_snapshot: number; acknowledged_at: string | null; instructor: InstructorProfile | null };
+type AdminNotification = { id: string; user_id: string; class_id: string | null; type: "class_request" | "class_reminder" | "assignment_confirmed" | "class_changed" | "class_cancelled"; title: string; body: string; action_url: string; read_at: string | null; created_at: string; recipient: { user_id: string; full_name: string; email: string } | null; class: { id: string; institution: string; title: string } | null };
 
 const classStatusMeta: Record<ClassStatus, { label: string; tone: string; priority: number; description: string }> = {
   assignment_needed: { label: "배정 필요", tone: "red", priority: 0, description: "필요 인원을 확정해 주세요" },
@@ -128,13 +129,13 @@ function RoleBadge({ role }: { role: string }) {
   return <span className={`role-badge ${role.includes("보조") ? "assistant" : role.includes("두") ? "both" : "lead"}`}>{role}</span>;
 }
 
-function Topbar({ screen, onInstructor, onCreate, admin }: { screen: Screen; onInstructor: () => void; onCreate: () => void; admin: AdminIdentity }) {
+function Topbar({ screen, onInstructor, onCreate, onNotifications, notificationCount, admin }: { screen: Screen; onInstructor: () => void; onCreate: () => void; onNotifications: () => void; notificationCount: number; admin: AdminIdentity }) {
   const labels: Record<Screen, string> = { home: "홈", classes: "수업 관리", requests: "배정 요청", schedule: "전체 일정", instructors: "강사 관리", approvals: "회원 승인", notifications: "알림 발송 이력" };
   return (
     <header className="topbar">
       <div><p className="eyebrow">클래스플로우 운영센터</p><h1>{labels[screen]}</h1></div>
       <div className="top-actions">
-        <button className="icon-btn" aria-label="알림"><span aria-hidden="true">♢</span><i /></button>
+        <button className="icon-btn" aria-label={notificationCount ? `알림 이력, 미확인 ${notificationCount}건` : "알림 이력"} onClick={onNotifications}><span aria-hidden="true">♢</span>{notificationCount > 0 && <i />}</button>
         <button className="button secondary instructor-preview" onClick={onInstructor}>강사 화면 보기 <span>→</span></button>
         <button className="button primary" onClick={onCreate}><span aria-hidden="true">＋</span> 수업 등록</button>
         <div className="profile" title={admin.email}><span>{admin.name}</span><b>{admin.name[0]}</b></div>
@@ -482,8 +483,21 @@ function ApprovalsScreen({ currentRole }: { currentRole: AdminIdentity["role"] }
   </div>;
 }
 
-function NotificationsScreen() {
-  return <div className="screen-stack"><section className="metrics-grid compact-metrics"><MetricCard icon="↗" label="오늘 발송" value="24건" detail="성공 23 · 실패 1" tone="blue" /><MetricCard icon="✓" label="발송 성공률" value="98.7%" detail="최근 30일 기준" tone="mint" /><MetricCard icon="◷" label="재알림" value="4건" detail="오늘 선택 발송" tone="amber" /></section><section className="panel notification-list"><div className="panel-head"><div><span className="section-kicker">DELIVERY LOG</span><h3>알림 발송 이력</h3></div><div className="filter-tabs"><button className="active">전체</button><button>요청</button><button>재알림</button><button>결과</button></div></div>{["배정 요청", "재알림", "배정 확정", "미선택 안내", "일정 변경"].map((type, i) => <article className="notification-item" key={type}><span className={`notification-type nt-${i}`}>{i === 0 ? "↗" : i === 1 ? "◷" : "✓"}</span><div><b>{type} · {i < 2 ? "AI 창의융합 체험 수업" : "로봇 코딩 진로 캠프"}</b><p>{i === 1 ? "한도윤 외 3명" : "김민준 외 7명"} · 카카오 알림톡</p></div><span>오늘 {10 + i}:2{i}</span><StatusBadge tone={i === 4 ? "red" : "green"}>{i === 4 ? "실패" : "성공"}</StatusBadge>{i === 4 && <button className="row-action">재발송</button>}</article>)}</section></div>;
+function NotificationsScreen({ notifications, loading, error }: { notifications: AdminNotification[]; loading: boolean; error: string }) {
+  const [filter, setFilter] = useState<"전체" | "요청" | "재알림" | "결과">("전체");
+  const today = new Date().toDateString();
+  const todayCount = notifications.filter(item => new Date(item.created_at).toDateString() === today).length;
+  const unreadCount = notifications.filter(item => !item.read_at).length;
+  const readRate = notifications.length ? Math.round((notifications.length - unreadCount) / notifications.length * 100) : 0;
+  const visible = notifications.filter(item => filter === "전체" || filter === "요청" && item.type === "class_request" || filter === "재알림" && item.type === "class_reminder" || filter === "결과" && !["class_request", "class_reminder"].includes(item.type));
+  const typeMeta: Record<AdminNotification["type"], { label: string; icon: string; tone: string }> = {
+    class_request: { label: "수업 요청", icon: "↗", tone: "blue" },
+    class_reminder: { label: "재알림", icon: "◷", tone: "amber" },
+    assignment_confirmed: { label: "배정 확정", icon: "✓", tone: "mint" },
+    class_changed: { label: "수업 변경", icon: "◇", tone: "purple" },
+    class_cancelled: { label: "수업 취소", icon: "×", tone: "red" },
+  };
+  return <div className="screen-stack"><section className="metrics-grid compact-metrics"><MetricCard icon="↗" label="오늘 발송" value={`${todayCount}건`} detail="플랫폼 내부 알림 기준" tone="blue" /><MetricCard icon="✓" label="강사 확인률" value={`${readRate}%`} detail={`확인 ${notifications.length - unreadCount} · 미확인 ${unreadCount}`} tone="mint" /><MetricCard icon="◷" label="미확인 알림" value={`${unreadCount}건`} detail="강사 확인 대기" tone="amber" /></section><section className="panel notification-list"><div className="panel-head"><div><span className="section-kicker">DELIVERY LOG</span><h3>실제 알림 발송 이력</h3><p>강사에게 저장된 플랫폼 내부 알림을 최신순으로 표시합니다.</p></div><div className="filter-tabs">{(["전체", "요청", "재알림", "결과"] as const).map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value}</button>)}</div></div>{loading && <div className="empty-state">알림 이력을 불러오는 중입니다.</div>}{error && <div className="empty-state">{error}</div>}{!loading && !error && visible.map(item => { const meta = typeMeta[item.type]; return <article className="notification-item" key={item.id}><span className={`notification-type ${meta.tone}`}>{meta.icon}</span><div><b>{meta.label} · {item.class ? `${item.class.institution} · ${item.class.title}` : item.title}</b><p>{item.recipient ? `${item.recipient.full_name} · ${item.recipient.email}` : "수신 강사"}</p><small>{item.body}</small></div><span>{new Date(item.created_at).toLocaleString("ko-KR")}</span><StatusBadge tone={item.read_at ? "green" : "amber"}>{item.read_at ? "확인" : "미확인"}</StatusBadge></article>; })}{!loading && !error && visible.length === 0 && <div className="empty-state">해당 조건의 실제 알림 이력이 없습니다.</div>}</section></div>;
 }
 
 function ClassForm({ close, onCreated }: { close: () => void; onCreated: (item: StoredClass) => void }) {
@@ -564,6 +578,9 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
   const [workspaceTab, setWorkspaceTab] = useState<ClassWorkspaceTab>("detail");
   const [classesLoading, setClassesLoading] = useState(true);
   const [classesError, setClassesError] = useState("");
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsError, setNotificationsError] = useState("");
   useEffect(() => {
     fetch("/api/admin/classes")
       .then(async response => {
@@ -573,6 +590,16 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
       .then(result => setStoredClasses(result.classes))
       .catch(() => setClassesError("수업 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."))
       .finally(() => setClassesLoading(false));
+  }, []);
+  useEffect(() => {
+    fetch("/api/admin/notifications", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("notifications_unavailable");
+        return response.json() as Promise<{ notifications: AdminNotification[] }>;
+      })
+      .then(result => setAdminNotifications(result.notifications))
+      .catch(() => setNotificationsError("실제 알림 이력을 불러오지 못했습니다."))
+      .finally(() => setNotificationsLoading(false));
   }, []);
   const selectedClass = storedClasses.find(item => item.id === selectedClassId) ?? null;
   const updateStoredClass = (item: StoredClass) => setStoredClasses(current => current.map(value => value.id === item.id ? item : value));
@@ -585,8 +612,8 @@ export default function ClassFlowApp({ currentAdmin }: { currentAdmin: AdminIden
     if (screen === "schedule") return <ScheduleScreen />;
     if (screen === "instructors") return <InstructorsScreen />;
     if (screen === "approvals") return <ApprovalsScreen currentRole={currentAdmin.role} />;
-    return <NotificationsScreen />;
-  }, [classesError, classesLoading, currentAdmin.name, currentAdmin.role, screen, selectedClass, storedClasses, workspaceTab]);
+    return <NotificationsScreen notifications={adminNotifications} loading={notificationsLoading} error={notificationsError} />;
+  }, [adminNotifications, classesError, classesLoading, currentAdmin.name, currentAdmin.role, notificationsError, notificationsLoading, screen, selectedClass, storedClasses, workspaceTab]);
   if (instructorMode) return <InstructorMobile onBack={() => setInstructorMode(false)} />;
-  return <div className="app-shell"><Sidebar screen={screen} setScreen={value => { setSelectedClassId(null); setScreen(value); }} canManageMembers={currentAdmin.role === "super_admin" || currentAdmin.role === "service_admin"} /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} onCreated={item => { setStoredClasses(current => [item, ...current]); setSelectedClassId(item.id); setWorkspaceTab("detail"); setScreen("classes"); }} />}</div>;
+  return <div className="app-shell"><Sidebar screen={screen} setScreen={value => { setSelectedClassId(null); setScreen(value); }} canManageMembers={currentAdmin.role === "super_admin" || currentAdmin.role === "service_admin"} /><div className="main-shell"><Topbar screen={screen} onInstructor={() => setInstructorMode(true)} onCreate={() => setShowForm(true)} onNotifications={() => { setSelectedClassId(null); setScreen("notifications"); }} notificationCount={adminNotifications.filter(item => !item.read_at).length} admin={currentAdmin} /><main className="main-content">{content}</main></div>{showForm && <ClassForm close={() => setShowForm(false)} onCreated={item => { setStoredClasses(current => [item, ...current]); setSelectedClassId(item.id); setWorkspaceTab("detail"); setScreen("classes"); }} />}</div>;
 }
